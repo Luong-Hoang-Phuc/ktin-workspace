@@ -113,3 +113,41 @@ export const PROGRESS_COLUMNS = [
   { key: 'trangthai', label: 'Trạng thái', type: 'select', options: STATUS, width: 120 },
 ];
 
+
+// ---------- Cấu trúc không gian làm việc theo sản phẩm ----------
+export const SECTIONS = [
+  { key: 'overview', label: 'Tổng quan', icon: '◎', tabs: [] },
+  { key: 'factory', label: 'Phương án nhà máy', n: 1, tabs: ['tree', 'machines', 'notes', 'boards', 'files'] },
+  { key: 'specs', label: 'Thông số sản phẩm', n: 2, tabs: ['specs', 'tables', 'notes', 'files'] },
+  { key: 'plan', label: 'Phương án sản xuất', n: 3, tabs: ['tables', 'boards', 'notes', 'files'] },
+  { key: 'workload', label: 'Khối lượng công việc', n: 4, tabs: ['tables', 'notes', 'files'] },
+  { key: 'materials', label: 'Dự trù vật tư', n: 5, tabs: ['tables', 'notes', 'files'] },
+  { key: 'time', label: 'Thời gian sản xuất', n: 6, tabs: ['tables', 'notes', 'files'] },
+  { key: 'cost', label: 'Giá thành', n: 7, tabs: ['tables', 'notes', 'files'] },
+  { key: 'schedule', label: 'Kế hoạch sản xuất', n: 8, tabs: ['tables', 'boards', 'notes', 'files'] },
+];
+export const TAB_LABELS = { tree: 'Sơ đồ nhà máy', machines: 'Dữ liệu máy', specs: 'Thông số & ảnh', tables: 'Bảng dữ liệu', notes: 'Ghi chú', boards: 'Bảng trắng', files: 'Tệp đính kèm' };
+
+// Danh mục máy dùng chung (từ CSDL thiết bị) – cột thông số
+export const MACHINE_FIELDS = TABLE_TEMPLATES['Dữ liệu máy (CSDL thiết bị)'].columns.filter(c => c.key !== 'may');
+export function machineCatalog() {
+  const T = TABLE_TEMPLATES['Dữ liệu máy (CSDL thiết bị)'];
+  return T.rows.map(vals => {
+    const cells = Object.fromEntries(T.columns.map((c, j) => [c.key, vals[j] ?? '']));
+    const name = cells.may === 'Thủ công' ? `${cells.congdoan} thủ công` : cells.may;
+    delete cells.may;
+    return { name, cells };
+  });
+}
+export const FACTORY_DEFAULTS = {
+  hop: [['Chế bản', ['Máy tính', 'Máy ghi – hiện']], ['In', ['L640']], ['Gia công bề mặt', ['DM1', 'TP1', 'en1']], ['Thành phẩm', ['TĐ1', 'Xé rìa thủ công', 'DH1']]],
+  sach: [['Chế bản', ['Máy tính', 'Máy ghi – hiện']], ['In', ['CD 102-4', 'SM102']], ['Gia công bìa', ['DM1', 'en1']], ['Thành phẩm ruột', ['CẮT 1', 'G1', 'BC1', 'KC1']], ['Hoàn thiện', ['VB1', 'X3']]],
+};
+export const PRODUCTS_DEFAULT = [
+  { kind: 'hop', name: 'Hộp kem dưỡng', subtitle: 'Reverse tuck end · 50 × 50 × 150 mm · Ivory 350 · In 5/0', qty: '50.000 hộp', due: 'Giao 15 ngày' },
+  { kind: 'sach', name: 'Sách khâu chỉ', subtitle: '14,5 × 20,5 cm · 240 trang · Ruột Fort 80 · Bìa Bristol 250', qty: '3.000 cuốn', due: 'Giao 20 ngày' },
+];
+export const LECTURER_FILES = [
+  '1. Hướng dẫn đồ án KTTCSX in – Hướng dẫn chung.pptx', '2. Xác định phương án và mô hình nhà máy.pptx', '3. HD – Xác định thông số SP.pptx',
+  '4. Lập phương án sản xuất cho sản phẩm.pptx', 'Dự trù vật tư và thời gian sản xuất.pptx', 'Tính giá khoản mục.pptx', '2. CƠ SỞ DỮ LIỆU.xlsx',
+];

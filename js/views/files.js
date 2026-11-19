@@ -1,14 +1,31 @@
 import db, { logActivity } from '../db.js';
-import { store, on, nameOf, profileOf } from '../store.js';
+import { store, on, nameOf, profileOf, folderOf, productOf, docsFolder } from '../store.js';
+import { SECTIONS } from './templates.js';
 import { h, fmtSize, fmtTime, fileIcon, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill, downloadNote } from '../ui.js';
 
 const safeKey = (name) => name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-80);
 const rid = () => Math.random().toString(36).slice(2, 10);
 const OFFICE = /\.(docx?|xlsx?|pptx?)$/i;
 
-export function mountFiles(el, { folder }) {
+const TYPES = [['all', 'Tất cả'], ['img', 'Ảnh'], ['pdf', 'PDF'], ['word', 'Word'], ['excel', 'Excel'], ['ppt', 'PowerPoint'], ['link', 'Link'], ['other', 'Khác']];
+function typeOf(f) {
+  if (!f.storage_path && f.external_url) return 'link';
+  const c = fileIcon(f.name, f.mime).cls;
+  return { 'ft-img': 'img', 'ft-pdf': 'pdf', 'ft-word': 'word', 'ft-excel': 'excel', 'ft-ppt': 'ppt' }[c] || 'other';
+}
+export function placeOf(folderId) {
+  const fo = folderOf(folderId); if (!fo) return '—';
+  if (!fo.product_id) return fo.section === 'team' ? 'Chung' : fo.name;
+  const s = SECTIONS.find(x => x.key === fo.section);
+  return `${productOf(fo.product_id)?.name || '?'} › ${s?.n ? s.n + '. ' : ''}${s?.label || fo.name}`;
+}
+
+export function mountFiles(el, { folder, aggregate = false, lecturer = false }) {
   const offs = [];
   let files = [];
+  const flt = { who: 'all', type: 'all', place: 'all' };
+  let target = folder.id;
+  const filterBox = h('div', { class: 'filters' });
   const wrap = h('div', { class: 'page' });
   el.append(wrap);
   const subBox = h('div');
@@ -19,9 +36,16 @@ export function mountFiles(el, { folder }) {
   ['dragleave', 'drop'].forEach(ev => wrap.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'drop' || !wrap.contains(e.relatedTarget)) drop.classList.remove('drag'); }));
   wrap.addEventListener('drop', (e) => { if (e.dataTransfer?.files?.length) uploadMany([...e.dataTransfer.files]); });
 
-  wrap.append(subBox,
+  const targetSel = aggregate ? h('select', { class: 'select sel-sm', title: 'File tải lên sẽ lưu vào đâu', onchange: (e) => { target = e.target.value; } },
+    h('option', { value: folder.id }, 'Lưu vào: Chung (cả nhóm)'),
+    store.products.map(p => h('optgroup', { label: p.name }, SECTIONS.filter(s => s.n).map(s => { const fo = store.folders.find(x => x.product_id === p.id && x.section === s.key); return fo ? h('option', { value: fo.id }, `${p.name} › ${s.n}. ${s.label}`) : null; })))) : null;
+  fill(wrap, subBox,
+    lecturer ? h('p', { class: 'muted small', style: { marginTop: 0 } }, 'Tài liệu gốc giảng viên cung cấp: 6 bài giảng hướng dẫn và file cơ sở dữ liệu. Chỉ xem và tải về, hạn chế sửa.') : null,
+    aggregate ? h('p', { class: 'muted small', style: { marginTop: 0 } }, 'Toàn bộ file nhóm đã gửi lên: tài liệu chung và tệp đính kèm trong từng mục của Hộp, Sách. Lọc theo người gửi, loại file hoặc nội dung.') : null,
+    filterBox,
     h('div', { class: 'toolbar' },
       h('button', { class: 'btn btn-primary', onclick: () => fileInput.click() }, '⬆️ Tải file lên'),
+      targetSel,
       h('button', { class: 'btn', onclick: addLink }, '🔗 Thêm link (Word Online, Drive…)'),
       h('div', { class: 'grow' }),
       h('span', { class: 'small muted' }, '🔒 = có người đang sửa file, hãy chờ họ upload bản mới')),
@@ -29,14 +53,28 @@ export function mountFiles(el, { folder }) {
 
   function renderSubs() {
     const subs = store.folders.filter(f => f.parent_id === folder.id);
-    fill(subBox, subs.length ? h('div', { class: 'subfolders' }, subs.map(s => h('div', { class: 'card subfolder', onclick: () => { location.hash = `#/f/${s.id}`; } }, h('span', { style: { fontSize: '22px' } }, s.icon || '📁'), h('b', {}, s.name)))) : '');
+    void subs;
   }
 
+  function renderFilters() {
+    if (!aggregate) return;
+    const all = files.filter(f => !f.parent_file_id);
+    const chip = (group, val, label, extra) => h('button', { class: `chip ${flt[group] === val ? 'on' : ''}`, onclick: () => { flt[group] = val; renderFilters(); render(); } }, extra || null, label);
+    const people = [...new Set(all.map(f => f.uploaded_by))].map(id => profileOf(id)).filter(Boolean);
+    const places = [...new Set(all.map(f => f.folder_id))];
+    fill(filterBox,
+      h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Người gửi'), chip('who', 'all', `Tất cả (${all.length})`), people.map(p => chip('who', p.id, `${p.display_name} (${all.filter(f => f.uploaded_by === p.id).length})`, avatar(p, 18)))),
+      h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Loại file'), TYPES.filter(([k]) => k === 'all' || all.some(f => typeOf(f) === k)).map(([k, l]) => chip('type', k, k === 'all' ? l : `${l} (${all.filter(f => typeOf(f) === k).length})`))),
+      h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Nội dung'), chip('place', 'all', 'Tất cả'), places.sort((a, b) => placeOf(a).localeCompare(placeOf(b), 'vi')).map(id => chip('place', id, placeOf(id)))));
+  }
   function render() {
-    const cur = files.filter(f => !f.parent_file_id).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+    renderFilters();
+    const cur = files.filter(f => !f.parent_file_id)
+      .filter(f => !aggregate || ((flt.who === 'all' || f.uploaded_by === flt.who) && (flt.type === 'all' || typeOf(f) === flt.type) && (flt.place === 'all' || f.folder_id === flt.place)))
+      .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
     if (!cur.length) { fill(listBox, h('div', { class: 'empty' }, h('div', { class: 'big' }, '📂'), h('p', {}, 'Thư mục chưa có tài liệu.'))); return; }
     fill(listBox, h('table', { class: 'ftable' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Tên'), h('th', {}, 'Phiên bản'), h('th', {}, 'Cập nhật bởi'), h('th', {}, 'Thời gian'), h('th', {}, 'Dung lượng'), h('th', {}))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Tên'), aggregate ? h('th', {}, 'Nội dung') : null, h('th', {}, 'Phiên bản'), h('th', {}, lecturer ? 'Nguồn' : 'Cập nhật bởi'), h('th', {}, 'Thời gian'), h('th', {}, 'Dung lượng'), h('th', {}))),
       h('tbody', {}, cur.map(f => {
         const ic = f.external_url && !f.storage_path ? { icon: '🔗', cls: 'ft-other' } : fileIcon(f.name, f.mime);
         const lockedByOther = f.locked_by && f.locked_by !== store.user.id;
@@ -48,13 +86,14 @@ export function mountFiles(el, { folder }) {
               h('div', { class: 'row', style: { gap: '6px', marginTop: '2px' } },
                 f.locked_by ? h('span', { class: 'lock' }, `🔒 ${f.locked_by === store.user.id ? 'Bạn' : nameOf(f.locked_by)} đang sửa · ${fmtTime(f.locked_at)}`) : null,
                 f.external_url && f.storage_path ? h('a', { href: f.external_url, target: '_blank', rel: 'noopener', class: 'small' }, '🔗 Mở bản online') : null)))),
+          aggregate ? h('td', { class: 'small' }, h('span', { class: 'place' }, placeOf(f.folder_id))) : null,
           h('td', {}, f.storage_path ? h('span', { class: 'badge badge-gray' }, 'v' + f.version) : h('span', { class: 'badge' }, 'Link'), olds ? h('span', { class: 'small muted' }, ` (${olds} bản cũ)`) : ''),
-          h('td', {}, h('div', { class: 'row' }, avatar(profileOf(f.uploaded_by), 22), h('span', { class: 'small' }, nameOf(f.uploaded_by)))),
+          h('td', {}, f.uploaded_by ? h('div', { class: 'row' }, avatar(profileOf(f.uploaded_by), 22), h('span', { class: 'small' }, nameOf(f.uploaded_by))) : h('span', { class: 'small muted' }, lecturer ? 'Giảng viên' : '—')),
           h('td', { class: 'small muted' }, fmtTime(f.updated_at || f.created_at)),
           h('td', { class: 'small muted' }, fmtSize(f.size)),
           h('td', {}, h('div', { class: 'actions' },
             f.storage_path ? h('button', { class: 'icon-btn', title: 'Tải xuống', onclick: () => download(f) }, '⬇️') : null,
-            f.storage_path ? (f.locked_by === store.user.id
+            f.storage_path && !lecturer ? (f.locked_by === store.user.id
               ? h('button', { class: 'btn btn-sm', title: 'Upload bản đã sửa và mở khoá', onclick: () => pickNewVersion(f) }, '⤴ Up bản mới')
               : h('button', { class: 'btn btn-sm', disabled: lockedByOther, title: lockedByOther ? 'Đang có người sửa' : 'Báo cả nhóm bạn đang sửa file này rồi tải về', onclick: () => checkout(f) }, '✏️ Sửa')) : null,
             h('button', { class: 'icon-btn', title: 'Tuỳ chọn', onclick: (e) => menu(f, e.currentTarget) }, '⋯'))));
@@ -62,7 +101,8 @@ export function mountFiles(el, { folder }) {
   }
 
   async function load() {
-    files = await db.select('files', { eq: { folder_id: folder.id } });
+    if (aggregate) { const lect = docsFolder('lecturer')?.id; files = (await db.select('files')).filter(f => f.folder_id !== lect); }
+    else files = await db.select('files', { eq: { folder_id: folder.id } });
     // phiên bản cũ có folder_id giống bản hiện tại
     render();
   }
@@ -71,7 +111,7 @@ export function mountFiles(el, { folder }) {
   async function uploadMany(list) {
     for (const file of list) {
       if (file.size > 50 * 1024 * 1024) { toast(`“${file.name}” vượt 50 MB`, 'error'); continue; }
-      const same = files.find(f => !f.parent_file_id && f.name === file.name && f.storage_path);
+      const same = files.find(f => !f.parent_file_id && f.name === file.name && f.storage_path && f.folder_id === target);
       if (same) {
         const r = await modal('File đã tồn tại', h('p', {}, `Thư mục đã có “${file.name}” (v${same.version}). Bạn muốn làm gì?`), [{ label: 'Huỷ', value: null }, { label: 'Tạo file riêng', value: 'new' }, { label: `Lưu thành v${same.version + 1}`, value: 'ver', primary: true }]);
         if (r === 'ver') { await newVersion(same, file); continue; }
@@ -79,11 +119,11 @@ export function mountFiles(el, { folder }) {
       }
       try {
         toast(`Đang tải lên “${file.name}”…`);
-        const path = `${folder.id}/${rid()}-${safeKey(file.name)}`;
+        const path = `${target}/${rid()}-${safeKey(file.name)}`;
         await db.upload(path, file);
         const now = new Date().toISOString();
-        await db.insert('files', { folder_id: folder.id, name: file.name, storage_path: path, size: file.size, mime: file.type, version: 1, uploaded_by: store.user.id, created_at: now, updated_at: now });
-        logActivity(store.user, 'đã tải lên', `${file.name} → ${folder.name}`);
+        await db.insert('files', { folder_id: target, name: file.name, storage_path: path, size: file.size, mime: file.type, version: 1, uploaded_by: store.user.id, created_at: now, updated_at: now });
+        logActivity(store.user, 'đã tải lên', `${file.name} → ${placeOf(target)}`);
         toast(`Đã tải lên “${file.name}”`, 'ok');
       } catch (e) { toastErr(e); }
     }
@@ -95,7 +135,7 @@ export function mountFiles(el, { folder }) {
     }
     try {
       toast(`Đang tải lên phiên bản mới…`);
-      const path = `${folder.id}/${rid()}-${safeKey(file.name)}`;
+      const path = `${f.folder_id}/${rid()}-${safeKey(file.name)}`;
       await db.upload(path, file);
       // lưu bản hiện tại thành bản cũ
       await db.insert('files', { folder_id: f.folder_id, name: f.name, storage_path: f.storage_path, size: f.size, mime: f.mime, version: f.version, parent_file_id: f.id, uploaded_by: f.uploaded_by, created_at: f.updated_at || f.created_at, updated_at: f.updated_at || f.created_at, description: f.description });
@@ -169,7 +209,7 @@ export function mountFiles(el, { folder }) {
       const name = await prompt('Tên hiển thị', 'Tên tài liệu', 'Báo cáo đồ án (Word Online)');
       if (!name) return;
       const now = new Date().toISOString();
-      await db.insert('files', { folder_id: folder.id, name, storage_path: '', external_url: url, version: 1, uploaded_by: store.user.id, created_at: now, updated_at: now });
+      await db.insert('files', { folder_id: target, name, storage_path: '', external_url: url, version: 1, uploaded_by: store.user.id, created_at: now, updated_at: now });
       logActivity(store.user, 'thêm link', name);
     } catch (e) { toastErr(e); }
   }
@@ -197,8 +237,10 @@ export function mountFiles(el, { folder }) {
   renderSubs();
   load().catch(toastErr);
   offs.push(on('folders', renderSubs));
-  offs.push(db.subscribe('files', ['folder_id', folder.id], (e) => {
+  const lectId = docsFolder('lecturer')?.id;
+  offs.push(db.subscribe('files', aggregate ? null : ['folder_id', folder.id], (e) => {
     if (e.type === 'DELETE') { if (!files.some(f => f.id === e.old.id)) return; files = files.filter(f => f.id !== e.old.id); }
+    else if (aggregate && e.new.folder_id === lectId) return;
     else { const i = files.findIndex(f => f.id === e.new.id); if (i >= 0) files[i] = e.new; else files.push(e.new); }
     render();
   }));

@@ -107,7 +107,7 @@ export function mountBoards(el, { folder, sub, go }) {
   function textBox(d, col, size, center = false) {
     const fo = S('foreignObject', { x: d.x, y: d.y, width: Math.max(10, d.w), height: Math.max(10, d.h) });
     const div = document.createElement('div');
-    div.style.cssText = `width:100%;height:100%;padding:10px 12px;box-sizing:border-box;font:500 ${size}px 'Be Vietnam Pro',sans-serif;color:${col};white-space:pre-wrap;word-break:break-word;overflow:hidden;line-height:1.35;${center ? 'display:flex;align-items:center;justify-content:center;text-align:center;' : ''}`;
+    div.style.cssText = `width:100%;height:100%;padding:10px 12px;box-sizing:border-box;font:500 ${size}px 'Montserrat',sans-serif;color:${col};white-space:pre-wrap;word-break:break-word;overflow:hidden;line-height:1.35;${center ? 'display:flex;align-items:center;justify-content:center;text-align:center;' : ''}`;
     div.innerHTML = esc(d.text || '');
     fo.append(div); return fo;
   }
