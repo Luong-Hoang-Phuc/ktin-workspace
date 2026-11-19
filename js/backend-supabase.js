@@ -5,6 +5,9 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   realtime: { params: { eventsPerSecond: 20 } },
 });
+const rooms = new Map();
+const presenceFns = new Set();
+let presenceCh = null, presenceMe = null;
 
 const must = ({ data, error }) => { if (error) throw error; return data; };
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -54,26 +57,41 @@ const db = {
     return () => sb.removeChannel(ch);
   },
 
-  // Kênh phát nhanh (không lưu DB): dùng cho kéo thả whiteboard, con trỏ, "đang gõ"
+  // Kênh phát nhanh (không lưu DB): dùng cho con trỏ, "đang gõ"…
+  // Mỗi tên kênh chỉ tạo 1 lần rồi dùng chung — Supabase không cho đăng ký thêm sự kiện
+  // vào kênh đã subscribe, nên mở lại cùng một kênh (chuyển trang qua lại) sẽ gây lỗi.
   room(name, onMessage) {
-    const ch = sb.channel(`room-${name}`, { config: { broadcast: { self: false } } });
-    ch.on('broadcast', { event: 'msg' }, ({ payload }) => onMessage(payload));
-    ch.subscribe();
+    let r = rooms.get(name);
+    if (!r) {
+      const ch = sb.channel(`room-${name}`, { config: { broadcast: { self: false } } });
+      r = { ch, fns: new Set() };
+      ch.on('broadcast', { event: 'msg' }, ({ payload }) => r.fns.forEach(fn => { try { fn(payload); } catch (e) { console.error(e); } }));
+      ch.subscribe();
+      rooms.set(name, r);
+    }
+    r.fns.add(onMessage);
     return {
-      send: (payload) => ch.send({ type: 'broadcast', event: 'msg', payload }),
-      close: () => sb.removeChannel(ch),
+      send: (payload) => r.ch.send({ type: 'broadcast', event: 'msg', payload }),
+      close: () => r.fns.delete(onMessage),
     };
   },
 
-  // Ai đang online, đang ở đâu
+  // Ai đang online, đang ở đâu (một kênh duy nhất cho cả phiên)
   presence(me, onSync) {
-    const ch = sb.channel('presence-team', { config: { presence: { key: me.id } } });
-    ch.on('presence', { event: 'sync' }, () => {
-      const st = ch.presenceState();
-      onSync(Object.values(st).map(arr => arr[arr.length - 1]));
-    });
-    ch.subscribe(async (s) => { if (s === 'SUBSCRIBED') await ch.track(me); });
-    return { update: (state) => ch.track({ ...me, ...state }), leave: () => sb.removeChannel(ch) };
+    presenceFns.add(onSync);
+    if (!presenceCh) {
+      presenceMe = me;
+      presenceCh = sb.channel('presence-team', { config: { presence: { key: me.id } } });
+      presenceCh.on('presence', { event: 'sync' }, () => {
+        const list = Object.values(presenceCh.presenceState()).map(arr => arr[arr.length - 1]);
+        presenceFns.forEach(fn => fn(list));
+      });
+      presenceCh.subscribe(async (s) => { if (s === 'SUBSCRIBED') await presenceCh.track(presenceMe); });
+    }
+    return {
+      update: (state) => { presenceMe = { ...presenceMe, ...state }; return presenceCh?.track(presenceMe); },
+      leave: () => { presenceFns.clear(); const ch = presenceCh; presenceCh = null; if (ch) sb.removeChannel(ch); },
+    };
   },
 
   // ---------- STORAGE ----------

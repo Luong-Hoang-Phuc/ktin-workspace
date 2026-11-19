@@ -28,7 +28,7 @@ async function boot() {
     if (!u && store.user) { store.user = null; location.hash = ''; location.reload(); }
   });
   const u = await db.getUser();
-  if (u) await start(u); else renderLogin();
+  if (u) { if (!store.user) await start(u); } else if (!store.user) renderLogin();
 }
 
 function upsertList(list, row) { const i = list.findIndex(x => x.id === row.id); if (i >= 0) list[i] = row; else list.push(row); }
