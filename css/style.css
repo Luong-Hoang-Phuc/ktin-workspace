@@ -151,11 +151,11 @@ h1, h2, h3 { font-family: 'Bitter', Georgia, serif; }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 
 /* ---------- ảnh sản phẩm ---------- */
-.pthumb { display: inline-grid; place-items: center; overflow: hidden; color: var(--ink); flex: none; }
+.pthumb { position: relative; display: inline-grid; place-items: center; overflow: hidden; color: var(--ink); flex: none; }
 .pthumb svg { width: 72%; height: 72%; }
 .pthumb.big { width: 120px; height: 120px; }
 .pthumb.has-img { background: #fff !important; }
-.pthumb img { width: 100%; height: 100%; object-fit: contain; object-position: center; padding: 4%; box-sizing: border-box; display: block; background: #fff; }
+.pthumb img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; object-position: center; padding: 4%; box-sizing: border-box; display: block; background: #fff; }
 
 /* ---------- trang chọn sản phẩm ---------- */
 .picker { padding: 36px 64px 48px; max-width: 1240px; margin: 0 auto; }
