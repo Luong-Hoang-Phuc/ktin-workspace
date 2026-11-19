@@ -79,3 +79,11 @@ js/views/viewer.js      trang xem từng mục
 js/views/*.js           tổng quan, tài liệu, ghi chú, thông số
 supabase/setup.sql      tạo bảng, bảo mật, realtime, kho file, dữ liệu ban đầu
 ```
+
+## Đăng web bằng Cloudflare Pages (repo riêng tư, code được nén)
+
+- Build command: `sh build.sh`
+- Build output directory: `dist`
+- `build.sh` nén và làm rối toàn bộ JS/CSS vào `dist/` bằng esbuild; mã gốc trong repo giữ nguyên để sửa.
+- `robots.txt`, `_headers` và thẻ `meta robots` chặn bot tìm kiếm / bot AI tuân thủ quy tắc.
+- Đổi địa chỉ web thì nhớ sửa Site URL + Redirect URLs trong Supabase → Authentication → URL Configuration.
