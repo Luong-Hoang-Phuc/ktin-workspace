@@ -53,7 +53,7 @@ Công cụ web phục vụ **đồ án (tiểu luận) Kinh tế & Tổ chức s
 python3 -m http.server 8000
 # mở http://localhost:8000
 ```
-Nếu `js/config.js` để trống `SUPABASE_URL`, web chạy **chế độ demo**: dữ liệu chỉ lưu trên trình duyệt, mở 2 tab để thử realtime.
+Nếu `js/config.js` để trống `API_URL`, web chạy **chế độ demo**: dữ liệu chỉ lưu trên trình duyệt, mở 2 tab để thử realtime.
 
 ## Lưu ý
 - Gói miễn phí Supabase: 500 MB database, 1 GB file. Project bị **tạm dừng nếu 7 ngày không ai dùng**, vào dashboard bấm *Restore* là chạy lại, không mất dữ liệu.

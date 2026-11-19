@@ -61,7 +61,7 @@ export function toast(msg, type = 'info') {
 const ERR_VI = [
   [/invalid login credentials/i, 'Sai email hoặc mật khẩu.'],
   [/email not confirmed/i, 'Email chưa được xác nhận. Mở email mời và bấm vào liên kết trước.'],
-  [/signups? not allowed|user not found|not allowed for otp/i, 'Email này chưa được mời vào nhóm. Nhờ trưởng nhóm mời trong Supabase.'],
+  [/signups? not allowed|user not found|not allowed for otp/i, 'Email này chưa được mời vào nhóm. Nhờ trưởng nhóm gửi lời mời.'],
   [/rate limit|too many requests|security purposes/i, 'Thao tác quá nhiều lần. Đợi vài phút rồi thử lại.'],
   [/password should be at least (\d+)/i, (m) => `Mật khẩu phải có ít nhất ${m[1]} ký tự.`],
   [/new password should be different/i, 'Mật khẩu mới phải khác mật khẩu cũ.'],

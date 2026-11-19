@@ -1,7 +1,7 @@
-import { SUPABASE_URL } from './config.js';
+import { API_URL } from './config.js';
 import { store } from './store.js';
 
-const mod = SUPABASE_URL ? await import('./backend-supabase.js') : await import('./backend-demo.js');
+const mod = API_URL ? await import('./backend-cloud.js') : await import('./backend-demo.js');
 const db = mod.default;
 export default db;
 

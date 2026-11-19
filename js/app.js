@@ -399,7 +399,7 @@ function renderDocs() {
       h('a', { class: `tab ${branch === 'lecturer' ? 'on' : ''}`, href: '#/docs/lecturer' }, '📚 Tài liệu giảng viên'),
       h('a', { class: `tab ${branch === 'team' ? 'on' : ''}`, href: '#/docs/team' }, '🗂️ Tài liệu nhóm')));
   fill(mainEl, h('div', { class: 'page-full' }, head, body));
-  if (!lect || !team) { fill(body, h('div', { class: 'page' }, h('div', { class: 'empty' }, 'Chưa tạo thư mục tài liệu. Chạy lại supabase/setup.sql.'))); return; }
+  if (!lect || !team) { fill(body, h('div', { class: 'page' }, h('div', { class: 'empty' }, 'Chưa tạo thư mục tài liệu. Liên hệ trưởng nhóm để khởi tạo lại.'))); return; }
   cleanup = branch === 'lecturer' ? mountFiles(body, { folder: lect, lecturer: true }) : mountFiles(body, { folder: team, aggregate: true });
 }
 

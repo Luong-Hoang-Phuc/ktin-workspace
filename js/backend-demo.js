@@ -1,5 +1,5 @@
 // CHẾ ĐỘ DEMO: dữ liệu lưu trong trình duyệt (localStorage), "realtime" giữa các tab qua BroadcastChannel.
-// Dùng để xem thử giao diện khi chưa cấu hình Supabase.
+// Dùng để xem thử giao diện khi chưa cấu hình máy chủ.
 import { buildSeed } from './demo-seed.js';
 const KEY = 'ktin-demo-v5';
 let bc = null; try { bc = new BroadcastChannel('ktin-demo'); } catch {}
@@ -102,7 +102,7 @@ const db = {
     const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
     state.blobs[path] = data;
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
-    catch { delete state.blobs[path]; throw new Error('Chế độ xem thử: bộ nhớ trình duyệt đầy (tệp quá lớn). Hãy cấu hình Supabase để tải lên tệp thật.'); }
+    catch { delete state.blobs[path]; throw new Error('Chế độ xem thử: bộ nhớ trình duyệt đầy (tệp quá lớn). Hãy dùng bản chính thức để tải lên tệp thật.'); }
     return path;
   },
   async fileUrl(path) { return state.blobs[path] || '#'; },

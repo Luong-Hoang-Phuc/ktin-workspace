@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, STORAGE_BUCKET } from './config.js';
+import { API_URL, API_KEY, STORAGE_BUCKET } from './config.js';
 
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const sb = createClient(API_URL, API_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   realtime: { params: { eventsPerSecond: 20 } },
 });
