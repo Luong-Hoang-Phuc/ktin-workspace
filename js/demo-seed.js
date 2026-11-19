@@ -113,10 +113,10 @@ export function buildSeed(uuid, { demo = true } = {}) {
   [[A, 'Mình nhập xong CSDL doanh nghiệp rồi nha, mọi người xem mục 1 giúp mình.', 1500],
    [B, 'Ok, mình đang làm phương án sản xuất Hộp. Khổ 65 × 86 đặt được 8 hộp/tờ.', 1440],
    [A, 'Nhớ hỏi cô vụ máy thành phẩm sách chưa có trong CSDL nhé', 1430],
-   [B, 'Mình vừa cập nhật file Word lên v2, chương 3 xong rồi.', 40]]
+   [B, 'Mình vừa cập nhật tệp Word lên v2, chương 3 xong rồi.', 40]]
     .forEach(([u, body, min]) => t.messages.push({ id: uuid(), user_id: u, body, created_at: ago(min) }));
 
-  [[A, 'đã tải lên', 'Tài liệu giảng viên (7 file)', 2000, null], [A, 'nhập CSDL doanh nghiệp', 'Thiết bị, vật tư, đơn giá, tham số chung', 1800, null],
+  [[A, 'đã tải lên', 'Tài liệu giảng viên (7 tệp)', 2000, null], [A, 'nhập CSDL doanh nghiệp', 'Thiết bị, vật tư, đơn giá, tham số chung', 1800, null],
    [B, 'lập phương án sản xuất', 'Hộp: màng mờ, UV từng phần, ép nhũ', 900, 'hop'], [B, 'tính thời gian sản xuất', 'Hộp – 9 công đoạn', 300, 'hop'],
    [B, 'đã cập nhật v2', 'Khung_Do_an_KTTCSX_In_Hop_Sach.docx', 45, null]]
     .forEach(([u, action, target, min, kind], i) => t.activity.push({ id: i + 1, user_id: u, action, target, product_id: kind ? meta.products[kind] : null, created_at: ago(min) }));

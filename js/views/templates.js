@@ -151,7 +151,7 @@ export const COMPANY_SHEETS = [
   ]),
   sheet('Giá giấy', [C('loai', 'Loại giấy', 'text', { width: 230 }), N('ma', 'Mã định mức'), N('gia', 'Giá (đ/tấn)', { fmt: 'vnd', sum: false }), C('ghichu', 'Ghi chú', 'text', { width: 260 })], [
     ['BRISTOL', 2, 25000000], ['COUCHE 1 MẶT LÁNG', 2, 26000000], ['COUCHE 2 MẶT LÁNG', 2, 23000000], ['CRAFT', 1, 20000000], ['DECAL', 2, 23000000],
-    ['GIẤY BỀN ẨM', 2, 30000000], ['GIẤY CRYSTAL', 2, 27000000], ['IVORY', 2, 25000000, 'File gốc lặp 2 dòng IVORY – giữ 1'], ['METALIZED', 2, 35000000],
+    ['GIẤY BỀN ẨM', 2, 30000000], ['GIẤY CRYSTAL', 2, 27000000], ['IVORY', 2, 25000000, 'Tệp gốc lặp 2 dòng IVORY – giữ 1'], ['METALIZED', 2, 35000000],
     ['CACTON DUPLEX', 1, 20000000], ['METALIZED ĐẾ BRISTOL', 2, 35000000], ['METALIZED ĐẾ CACTON DUPLEX', 2, 30000000], ['FORT', 1, 17000000],
   ]),
   sheet('Bù hao giấy in (màu 1)', [N('luot1', 'Mã 1 – số lượt in từ', { sum: false }), N('bh1', 'Mã 1 – bù hao (%)', { sum: false }), N('luot2', 'Mã 2 – số lượt in từ', { sum: false }), N('bh2', 'Mã 2 – bù hao (%)', { sum: false }), C('ghichu', 'Ghi chú', 'text', { width: 330 })], (() => {
@@ -256,7 +256,7 @@ export const SCHEDULE_STATUS = ['Chưa bắt đầu', 'Đang làm', 'Đạt', 'C
 const schCols = [C('congdoan', 'Công đoạn', 'text', { width: 150 }), C('may', 'Máy', 'text', { width: 110 }), C('vattu', 'Vật tư sử dụng', 'text', { width: 200 }), N('tlv', 'T làm việc (h)', { fmt: 'dec2' }),
   F('songay', 'Số ngày (2 ca × 8 h)', '=IF({tlv}@="","",MAX(1,ROUNDUP({tlv}@/16,0)))', { fmt: 'int' }), C('batdau', 'Bắt đầu', 'date', { width: 130 }),
   F('ketthuc', 'Kết thúc', '=IF(OR({batdau}@="",{songay}@=""),"",{batdau}@+{songay}@-1)', { fmt: 'date', sum: false }),
-  C('checkpoint', 'Checkpoint kiểm tra', 'text', { width: 260 }), C('trangthai', 'Trạng thái', 'select', { options: SCHEDULE_STATUS, width: 120 })];
+  C('checkpoint', 'Điểm kiểm tra', 'text', { width: 260 }), C('trangthai', 'Trạng thái', 'select', { options: SCHEDULE_STATUS, width: 120 })];
 
 // Hộp: điền ví dụ để thấy công thức chạy (số minh hoạ – nhóm thay bằng số thật). Sách: khung trống.
 const SHEETS_HOP = {
@@ -347,7 +347,7 @@ const SHEETS_SACH = {
 };
 export const PRODUCT_SHEETS = { hop: SHEETS_HOP, sach: SHEETS_SACH };
 export const CHECKPOINTS = {
-  'Chế bản – làm file': 'Duyệt file, bản in thử (proof) với khách', 'Chế tạo khuôn in (CTP)': 'Kiểm tra bản kẽm: đủ màu, điểm tram, tay kê',
+  'Chế bản – làm file': 'Duyệt tệp, bản in thử (proof) với khách', 'Chế tạo khuôn in (CTP)': 'Kiểm tra bản kẽm: đủ màu, điểm tram, tay kê',
   'In offset': 'Duyệt tờ in đầu: màu, chồng màu, mật độ', 'Dán màng': 'Độ bám màng, không nhăn, bọt khí', 'Tráng phủ UV': 'Vị trí UV khớp, độ khô',
   'Ép nhũ': 'Vị trí nhũ, độ sắc nét', 'Bế': 'Đường bế, đường cấn, không bung xơ', 'Xé rìa': 'Sạch rìa, không rách', 'Dán hộp': 'Dán chắc, hộp vuông, thử gấp',
   'Kiểm tra – đóng gói': 'Kiểm tra xác suất, đóng thùng, nhãn thùng',
@@ -372,7 +372,7 @@ export const STEPS = [
   ['Dự trù vật tư', 'Giấy, kẽm, mực, màng, verni, nhũ, keo, chỉ…'],
   ['Tính thời gian sản xuất', 'T máy chạy, canh bài, ngừng CN/KT/TCSX'],
   ['Tính giá thành theo khoản mục', 'NVL, lương, BH, khấu hao, SXC, QLDN, bán hàng, lợi nhuận'],
-  ['Lập kế hoạch sản xuất', 'Lịch trình, checkpoint, theo dõi tiến độ'],
+  ['Lập kế hoạch sản xuất', 'Lịch trình, điểm kiểm tra, theo dõi tiến độ'],
 ];
 export const PROGRESS_COLUMNS = [
   { key: 'buoc', label: 'Bước', type: 'text' }, { key: 'noidung', label: 'Nội dung', type: 'text' }, { key: 'ghichu', label: 'Ghi chú', type: 'text' },

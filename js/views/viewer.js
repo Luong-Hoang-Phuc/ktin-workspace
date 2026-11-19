@@ -134,11 +134,11 @@ function schedule(f, product) {
     h('div', { class: 'kpis' },
       h('div', { class: 'kpi' }, h('span', {}, 'Bắt đầu'), h('b', { class: 'serif' }, dated.length ? fmtNumber(S.start, 'date') : '—')),
       h('div', { class: 'kpi' }, h('span', {}, 'Hoàn thành dự kiến'), h('b', { class: 'serif' }, dated.length ? fmtNumber(S.end, 'date') : '—'), dated.length ? h('small', {}, `${S.end - S.start + 1} ngày${due ? ` · hạn ${due} ngày ${S.end - S.start + 1 <= due ? '✓ kịp' : '⚠ trễ'}` : ''}`) : null),
-      h('div', { class: 'kpi' }, h('span', {}, 'Checkpoint đạt'), h('b', { class: 'serif' }, `${done}/${S.items.length}`), h('div', { class: 'bar' }, h('i', { style: { width: pct + '%' } })))),
+      h('div', { class: 'kpi' }, h('span', {}, 'Điểm kiểm tra đạt'), h('b', { class: 'serif' }, `${done}/${S.items.length}`), h('div', { class: 'bar' }, h('i', { style: { width: pct + '%' } })))),
     h('div', { class: 'card v-card' }, h('h3', { class: 'serif' }, 'Đơn hàng đi qua'),
       h('div', { class: 'route' }, S.items.map((x, i) => [i ? h('span', { class: 'arr' }, '→') : null, h('div', { class: `rt st-${SCHEDULE_STATUS.indexOf(x.r.cells?.trangthai || SCHEDULE_STATUS[0])}` }, h('b', {}, x.r.cells?.congdoan), x.r.cells?.may ? h('small', {}, x.r.cells.may) : null, x.r.cells?.vattu ? h('small', { class: 'vt' }, x.r.cells.vattu) : null)]))),
     gantt,
-    h('div', { class: 'card v-card' }, h('h3', { class: 'serif' }, 'Checkpoint kiểm tra'),
+    h('div', { class: 'card v-card' }, h('h3', { class: 'serif' }, 'Điểm kiểm tra'),
       h('div', { class: 'cps' }, S.items.filter(x => x.r.cells?.checkpoint).map(x => { const st = x.r.cells?.trangthai || SCHEDULE_STATUS[0]; return h('div', { class: 'cp' }, h('span', { class: `dot st-${SCHEDULE_STATUS.indexOf(st)}` }), h('div', { class: 'grow' }, h('b', {}, x.r.cells.congdoan), h('div', { class: 'small muted' }, x.r.cells.checkpoint)), h('span', { class: `badge st-${SCHEDULE_STATUS.indexOf(st)}` }, st), x.end != null ? h('span', { class: 'small muted' }, fmtNumber(x.end, 'date')) : null); }))));
 }
 void serialToISO; void SECTIONS;

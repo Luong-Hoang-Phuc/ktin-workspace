@@ -1,7 +1,7 @@
 import db, { logActivity } from './db.js';
 import { APP_NAME, APP_SUBTITLE } from './config.js';
 import { store, on, emit, productOf, sectionFolder, docsFolder, companyFolder, folderFor, setWhere, folderOf } from './store.js';
-import { h, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill } from './ui.js';
+import { h, toast, toastErr, viError, prompt, confirmBox, modal, avatar, popMenu, fill } from './ui.js';
 import { SECTIONS, WORK_SECTIONS, VIEW_TABS, SECTION_TEMPLATES } from './views/templates.js';
 import { mountPicker, productThumb } from './views/picker.js';
 import { mountOverview } from './views/dashboard.js';
@@ -82,11 +82,11 @@ function renderLogin() {
   const nick = h('input', { class: 'input', placeholder: 'VD: Hoàng Phúc', value: 'Hoàng Phúc' });
   const passField = h('label', { class: 'field', style: { display: 'none' } }, h('span', {}, 'Mật khẩu'), pass);
   const msg = h('div', { class: 'small muted', style: { minHeight: '20px', marginTop: '10px' } });
-  const btn = h('button', { class: 'btn btn-primary btn-block' }, db.demo ? 'Vào không gian làm việc' : 'Gửi link đăng nhập qua email');
+  const btn = h('button', { class: 'btn btn-primary btn-block' }, db.demo ? 'Vào không gian làm việc' : 'Gửi liên kết đăng nhập qua email');
   const tabs = h('div', { class: 'tabs-mini' });
   const setMode = (m) => {
     mode = m; passField.style.display = m === 'pw' ? '' : 'none';
-    btn.textContent = m === 'pw' ? 'Đăng nhập' : 'Gửi link đăng nhập qua email';
+    btn.textContent = m === 'pw' ? 'Đăng nhập' : 'Gửi liên kết đăng nhập qua email';
     [...tabs.children].forEach((b, i) => b.classList.toggle('on', (i === 0) === (m === 'otp')));
   };
   tabs.append(h('button', { class: 'on', onclick: () => setMode('otp') }, 'Link qua email'), h('button', { onclick: () => setMode('pw') }, 'Mật khẩu'));
@@ -97,9 +97,9 @@ function renderLogin() {
     try {
       if (db.demo) { await db.signInPassword(e, nick.value.trim()); }
       else if (mode === 'pw') { await db.signInPassword(e, pass.value); }
-      else { await db.signInOtp(e); msg.innerHTML = '✅ Đã gửi link. Mở email và bấm vào link để vào workspace.'; }
+      else { await db.signInOtp(e); msg.innerHTML = '✅ Đã gửi liên kết. Mở email và bấm vào liên kết để vào không gian làm việc.'; }
     } catch (err) {
-      msg.textContent = /not allowed|Signups not allowed|not found/i.test(err.message) ? 'Email này chưa được mời vào nhóm. Nhờ trưởng nhóm mời trong Supabase.' : (err.message || 'Có lỗi xảy ra');
+      msg.textContent = viError(err.message);
     } finally { btn.disabled = false; }
   };
   btn.onclick = submit;
@@ -112,7 +112,7 @@ function renderLogin() {
         h('div', { class: 'row', style: { gap: '10px', marginBottom: '48px' } }, h('div', { class: 'mark' }, 'K'), h('b', { class: 'serif', style: { fontSize: '18px' } }, APP_NAME)),
         h('div', { class: 'stamp' }, 'ĐỒ ÁN KT&TCSX IN'),
         h('h1', { class: 'serif' }, 'Không gian làm việc chung cho đồ án in'),
-        h('p', {}, 'Công cụ làm đồ án Kinh tế & tổ chức sản xuất in: trang xem cho từng mục của đồ án, Cơ sở dữ liệu nhập như Excel, tài liệu và link Canva dùng chung cho cả nhóm.'),
+        h('p', {}, 'Công cụ làm đồ án Kinh tế & tổ chức sản xuất in: trang xem cho từng mục của đồ án, Cơ sở dữ liệu nhập như Excel, tài liệu và liên kết Canva dùng chung cho cả nhóm.'),
         h('div', { class: 'login-products' }, h('div', {}, productThumb({ kind: 'hop' }, true), h('span', {}, 'Hộp')), h('div', {}, productThumb({ kind: 'sach' }, true), h('span', {}, 'Sách')))),
       h('div', { class: 'small', style: { opacity: .7 } }, 'Chỉ thành viên được mời mới đăng nhập được.')),
     h('div', { class: 'login-box' }, h('div', { class: 'login-card' },
@@ -151,8 +151,8 @@ function renderTop() {
     db.demo ? h('span', { class: 'demo-pill', title: 'Dữ liệu chỉ lưu trên trình duyệt này' }, 'Bản xem thử') : null,
     db.demo ? h('button', { class: `btn btn-sm ${sim?.isRunning() ? 'btn-primary' : 'btn-ghost'}`, title: 'Giả lập 2 bạn cùng nhóm đang làm việc', onclick: toggleSim }, sim?.isRunning() ? '⏸ Dừng mô phỏng' : '▶ Mô phỏng nhóm') : null,
     h('div', { class: 'canva-group' },
-      h('button', { class: 'btn btn-canva', title: canva ? 'Mở Canva – template thuyết trình (chung 2 sản phẩm)' : 'Chưa gắn link Canva', onclick: openCanva }, '✦ Canva'),
-      h('button', { class: 'icon-btn light', title: 'Sửa link Canva', onclick: editCanva }, '✎')));
+      h('button', { class: 'btn btn-canva', title: canva ? 'Mở Canva – mẫu thuyết trình (chung 2 sản phẩm)' : 'Chưa gắn liên kết Canva', onclick: openCanva }, '✦ Canva'),
+      h('button', { class: 'icon-btn light', title: 'Sửa liên kết Canva', onclick: editCanva }, '✎')));
 }
 
 function dbHref() {
@@ -182,7 +182,7 @@ function renderSide() {
   const ico = (icon, label, opts) => h(opts.href ? 'a' : 'button', { class: `dock-ic ${opts.on ? 'on' : ''}`, href: opts.href, onclick: opts.run, title: label }, h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label), opts.badge ? h('span', { class: 'badge-n' }, opts.badge > 99 ? '99+' : opts.badge) : null);
   const me = store.me;
   const onlineIds = new Set(store.online.map(o => o.id));
-  const where = (id) => { const o = store.online.find(x => x.id === id); if (!o) return 'Offline'; if (o.section === 'chat') return 'Đang ở Tin nhắn'; const pp = productOf(o.productId); return pp ? `${pp.name}${o.sectionLabel ? ' › ' + o.sectionLabel : ''}` : o.docs ? 'Tài liệu' : 'Online'; };
+  const where = (id) => { const o = store.online.find(x => x.id === id); if (!o) return 'Ngoại tuyến'; if (o.section === 'chat') return 'Đang ở Tin nhắn'; const pp = productOf(o.productId); return pp ? `${pp.name}${o.sectionLabel ? ' › ' + o.sectionLabel : ''}` : o.docs ? 'Tài liệu' : 'Trực tuyến'; };
   const team = [...store.profiles.values()].filter(p => p.id !== store.user.id).sort((a, b) => (onlineIds.has(b.id) - onlineIds.has(a.id)) || (a.display_name || '').localeCompare(b.display_name || ''));
   fill(sideEl,
     h('div', { class: 'side-nav' }, nav),
@@ -196,7 +196,7 @@ function renderSide() {
         h('span', { class: 'av-wrap on' }, avatar(me, 32)),
         h('div', { class: 'grow', onclick: openProfile, style: { cursor: 'pointer', minWidth: 0 } }, h('b', {}, me?.display_name || store.user.email), h('small', {}, store.user.email)),
         h('button', { class: 'icon-btn', title: 'Tài khoản', onclick: (e) => popMenu(e.currentTarget, [
-          { icon: '👤', label: 'Hồ sơ của bạn', run: openProfile }, { icon: '✎', label: 'Sửa link Canva', run: editCanva },
+          { icon: '👤', label: 'Hồ sơ của bạn', run: openProfile }, { icon: '✎', label: 'Sửa liên kết Canva', run: editCanva },
           db.demo ? { icon: '↺', label: 'Đặt lại dữ liệu mẫu', run: resetDemo } : null, '-', { icon: '⎋', label: 'Đăng xuất', danger: true, run: signOut }].filter(Boolean)) }, '⋯')),
       h('div', { class: 'dock-team' }, team.map(p => h('div', { class: `mate ${onlineIds.has(p.id) ? 'on' : ''}`, title: where(p.id) },
         h('span', { class: 'av-wrap' }, avatar(p, 26)), h('div', { class: 'grow' }, h('b', {}, p.display_name || p.email), h('small', {}, where(p.id))))))));
@@ -221,8 +221,8 @@ function openDrawer() {
     item('🗄', 'Cơ sở dữ liệu', () => go(dbHref())),
     item('📁', 'Tài liệu', () => go('#/docs/lecturer')),
     item('💬', 'Tin nhắn', () => go('#/chat'), { right: store.unread ? h('span', { class: 'badge-n' }, store.unread) : null }),
-    item('✦', 'Canva – template thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn link' }),
-    item('✎', 'Sửa link Canva', editCanva),
+    item('✦', 'Canva – mẫu thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn liên kết' }),
+    item('✎', 'Sửa liên kết Canva', editCanva),
     h('div', { class: 'dr-sec' }, 'Tài khoản'),
     item('👤', 'Hồ sơ của bạn', openProfile),
     db.demo ? item('↺', 'Đặt lại dữ liệu mẫu', resetDemo) : null,
@@ -240,16 +240,16 @@ function openCanva() {
 async function editCanva() {
   const cur = store.settings.get('canva_url') || '';
   const body = h('div', {},
-    h('p', { class: 'small muted' }, 'Một link Canva dùng chung cho cả Hộp và Sách (template thuyết trình). Trong Canva: Chia sẻ → Sao chép liên kết (quyền “Có thể chỉnh sửa” để cả nhóm cùng sửa).'),
+    h('p', { class: 'small muted' }, 'Một liên kết Canva dùng chung cho cả Hộp và Sách (mẫu thuyết trình). Trong Canva: Chia sẻ → Sao chép liên kết (quyền “Có thể chỉnh sửa” để cả nhóm cùng sửa).'),
     h('label', { class: 'field' }, h('span', {}, 'Link Canva'), h('input', { class: 'input', id: 'canva-in', value: cur, placeholder: 'https://www.canva.com/design/…' })));
-  const r = await modal('Link Canva của nhóm', body, [{ label: 'Huỷ', value: null }, { label: 'Lưu', value: 'ok', primary: true }]);
+  const r = await modal('Liên kết Canva của nhóm', body, [{ label: 'Huỷ', value: null }, { label: 'Lưu', value: 'ok', primary: true }]);
   if (r !== 'ok') return;
   const v = body.querySelector('#canva-in').value.trim();
-  if (v && !/^https?:\/\//.test(v)) { toast('Link phải bắt đầu bằng https://', 'error'); return; }
+  if (v && !/^https?:\/\//.test(v)) { toast('Liên kết phải bắt đầu bằng https://', 'error'); return; }
   try {
     if (await db.get('settings', 'canva_url')) await db.update('settings', 'canva_url', { value: v, updated_by: store.user.id, updated_at: new Date().toISOString() });
     else await db.insert('settings', { id: 'canva_url', value: v, updated_by: store.user.id });
-    store.settings.set('canva_url', v); renderTop(); logActivity(store.user, 'cập nhật link', 'Canva – template thuyết trình'); toast('Đã lưu link Canva', 'ok');
+    store.settings.set('canva_url', v); renderTop(); logActivity(store.user, 'cập nhật liên kết', 'Canva – mẫu thuyết trình'); toast('Đã lưu liên kết Canva', 'ok');
   } catch (e) { toastErr(e); }
 }
 
@@ -265,7 +265,7 @@ async function openProfile() {
     h('p', { class: 'muted small' }, store.user.email),
     h('label', { class: 'field' }, h('span', {}, 'Tên hiển thị'), name),
     h('div', { class: 'field' }, h('span', {}, 'Màu của bạn'), colors),
-    db.demo ? null : h('label', { class: 'field' }, h('span', {}, 'Đặt mật khẩu (để đăng nhập không cần link email)'), pw));
+    db.demo ? null : h('label', { class: 'field' }, h('span', {}, 'Đặt mật khẩu (để đăng nhập không cần liên kết email)'), pw));
   const r = await modal('Hồ sơ của bạn', body, [{ label: 'Huỷ', value: null }, { label: 'Lưu', value: 'save', primary: true }]);
   if (r === 'save') {
     try {

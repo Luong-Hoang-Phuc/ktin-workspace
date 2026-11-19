@@ -81,7 +81,7 @@ const STEPS = [
   // 6. Minh Anh nhắn tin cho nhóm
   async () => {
     where(BOT_A, null, 'chat', 'Tin nhắn');
-    const lines = ['Mình vừa sửa năng suất L640, mọi người kiểm tra lại bảng Thời gian nhé', 'Giá thành hộp đang ra khoảng 1.200 đ/hộp, nghe hợp lý không?', 'Tối nay họp online 20h nha 👋'];
+    const lines = ['Mình vừa sửa năng suất L640, mọi người kiểm tra lại bảng Thời gian nhé', 'Giá thành hộp đang ra khoảng 1.200 đ/hộp, nghe hợp lý không?', 'Tối nay họp trực tuyến 20h nha 👋'];
     sim().room('chat-team', { t: 'typing', uid: BOT_A.id, name: BOT_A.display_name });
     await sleep(1800);
     await db.insert('messages', { user_id: BOT_A.id, body: lines[round % lines.length] });

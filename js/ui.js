@@ -57,7 +57,23 @@ export function toast(msg, type = 'info') {
   setTimeout(() => t.classList.add('out'), 3200);
   setTimeout(() => t.remove(), 3600);
 }
-export const toastErr = (e) => { console.error(e); toast(e?.message || String(e), 'error'); };
+// Dịch các thông báo lỗi thường gặp (Supabase, trình duyệt) sang tiếng Việt
+const ERR_VI = [
+  [/invalid login credentials/i, 'Sai email hoặc mật khẩu.'],
+  [/email not confirmed/i, 'Email chưa được xác nhận. Mở email mời và bấm vào liên kết trước.'],
+  [/signups? not allowed|user not found|not allowed for otp/i, 'Email này chưa được mời vào nhóm. Nhờ trưởng nhóm mời trong Supabase.'],
+  [/rate limit|too many requests|security purposes/i, 'Thao tác quá nhiều lần. Đợi vài phút rồi thử lại.'],
+  [/password should be at least (\d+)/i, (m) => `Mật khẩu phải có ít nhất ${m[1]} ký tự.`],
+  [/new password should be different/i, 'Mật khẩu mới phải khác mật khẩu cũ.'],
+  [/jwt expired|invalid jwt|refresh token/i, 'Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.'],
+  [/failed to fetch|networkerror|load failed/i, 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.'],
+  [/row-level security|violates row level|permission denied/i, 'Không có quyền thực hiện thao tác này.'],
+  [/duplicate key/i, 'Dữ liệu bị trùng.'],
+  [/payload too large|exceeded the maximum allowed size|object too large/i, 'Tệp quá lớn (tối đa 50 MB).'],
+  [/the resource already exists/i, 'Tệp đã tồn tại.'],
+];
+export const viError = (msg) => { const s = String(msg || ''); for (const [re, vi] of ERR_VI) { const m = s.match(re); if (m) return typeof vi === 'function' ? vi(m) : vi; } return s || 'Có lỗi xảy ra'; };
+export const toastErr = (e) => { console.error(e); toast(viError(e?.message || e), 'error'); };
 
 // Hộp thoại
 export function modal(title, body, actions = []) {
@@ -139,5 +155,5 @@ export function fill(el, ...children) {
 // Trang xem thử chạy trong khung bảo vệ nên trình duyệt chặn tải file: báo cho người dùng
 export function downloadNote() {
   let framed = false; try { framed = window.top !== window; } catch { framed = true; }
-  if (framed) toast('Bản xem thử không tải file về được. Bản chính trên GitHub sẽ tải bình thường.');
+  if (framed) toast('Bản xem thử không tải tệp về được. Bản chính trên GitHub sẽ tải bình thường.');
 }

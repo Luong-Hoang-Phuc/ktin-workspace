@@ -32,7 +32,7 @@ export function mountSpecs(el, { product, folder }) {
     ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
     ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drag'); }));
     drop.addEventListener('drop', (e) => { const f = [...(e.dataTransfer?.files || [])].find(x => x.type.startsWith('image/')); if (f) upload(f); });
-    fill(imgBox, drop, h('div', { class: 'row', style: { padding: '12px 14px', borderTop: '1.5px dashed var(--line)' } },
+    fill(imgBox, drop, h('div', { class: 'row', style: { padding: '12px 14px', borderTop: '1px solid var(--line)' } },
       h('button', { class: 'btn btn-sm btn-primary', onclick: () => input.click() }, p.image_path ? '↻ Đổi ảnh' : '⬆ Tải ảnh lên'),
       p.image_path ? h('button', { class: 'btn btn-sm', onclick: removeImg }, 'Gỡ ảnh') : null,
       h('div', { class: 'grow' })));

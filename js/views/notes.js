@@ -61,7 +61,7 @@ export function mountNotes(el, { folder, sub, go }) {
 
   let titleEl, textEl, prevEl, statusEl, typingEl, areaEl;
   function renderEditor() {
-    if (!cur) { fill(edit, h('div', { class: 'page' }, h('div', { class: 'empty' }, h('div', { class: 'big' }, '🗒️'), h('p', {}, 'Chọn hoặc tạo một ghi chú. Mọi người trong nhóm sẽ thấy nội dung cập nhật ngay khi bạn gõ.'), h('p', { class: 'small' }, 'Hỗ trợ định dạng: # Tiêu đề, **đậm**, *nghiêng*, - danh sách, - [ ] việc cần làm, link.')))); return; }
+    if (!cur) { fill(edit, h('div', { class: 'page' }, h('div', { class: 'empty' }, h('div', { class: 'big' }, '🗒️'), h('p', {}, 'Chọn hoặc tạo một ghi chú. Mọi người trong nhóm sẽ thấy nội dung cập nhật ngay khi bạn gõ.'), h('p', { class: 'small' }, 'Hỗ trợ định dạng: # Tiêu đề, **đậm**, *nghiêng*, - danh sách, - [ ] việc cần làm, liên kết.')))); return; }
     titleEl = h('input', { class: 'note-title', value: cur.title, placeholder: 'Tiêu đề', oninput: onType });
     textEl = h('textarea', { class: 'note-text', placeholder: 'Bắt đầu ghi chú…', oninput: onType, onkeydown: tabKey });
     textEl.value = cur.content || '';

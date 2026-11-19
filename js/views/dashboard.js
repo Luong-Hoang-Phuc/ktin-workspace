@@ -71,7 +71,7 @@ export function mountOverview(el, { product, folder }) {
         const where = o ? (productOf(o.productId) ? `${productOf(o.productId).name}${o.sectionLabel ? ' › ' + o.sectionLabel : ''}` : o.docs ? 'Tài liệu' : 'Chọn sản phẩm') : '';
         return h('div', { class: 'row' }, avatar(p, 32),
           h('div', { class: 'grow' }, h('div', { style: { fontWeight: 600 } }, p.display_name || p.email, p.id === store.user.id ? ' (bạn)' : ''), h('div', { class: 'small muted' }, o ? '● ' + where : p.email)),
-          o ? h('span', { class: 'badge badge-ok' }, 'Online') : h('span', { class: 'badge badge-gray' }, 'Offline'));
+          o ? h('span', { class: 'badge badge-ok' }, 'Trực tuyến') : h('span', { class: 'badge badge-gray' }, 'Ngoại tuyến'));
       })));
   }
 

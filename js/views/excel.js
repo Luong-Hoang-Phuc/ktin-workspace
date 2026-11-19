@@ -93,7 +93,7 @@ function referencedCols(sheets) {
 
 export async function importExcel(folder, data, file) {
   const sheets = (await readXlsx(await file.arrayBuffer())).filter(s => s.maxRow > 0);
-  if (!sheets.length) { toast('File không có dữ liệu', 'error'); return; }
+  if (!sheets.length) { toast('Tệp không có dữ liệu', 'error'); return; }
   const colMax = referencedCols(sheets);
   const existing = data.map(d => d.table);
   const plan = sheets.map(sh => {
@@ -113,7 +113,7 @@ export async function importExcel(folder, data, file) {
     h('p', { class: 'small', style: { margin: '0 0 10px' } }, h('b', {}, file.name), ` – ${sheets.length} sheet`),
     h('div', { class: 'sv-scroll' }, h('table', { class: 'sv' }, h('tbody', {}, rowsUI))),
     unsupported.length ? h('div', { class: 'warn small' }, '⚠ Hàm web chưa tính được: ', h('b', {}, unsupported.join(', ')), ' – ô dùng hàm này sẽ báo #NAME?.') : null);
-  const ok = await modal('Nhập file Excel', body, [{ label: 'Huỷ', value: null }, { label: 'Nhập', value: 'ok', primary: true }]);
+  const ok = await modal('Nhập tệp Excel', body, [{ label: 'Huỷ', value: null }, { label: 'Nhập', value: 'ok', primary: true }]);
   if (ok !== 'ok') return;
   const chosen = plan.filter(p => p.on);
   if (!chosen.length) return;
@@ -174,7 +174,7 @@ export async function importExcel(folder, data, file) {
     if (rows.length) await db.insertMany('data_rows', rows);
     nRows += rows.length;
   }
-  logActivity(store.user, `nhập Excel (${targets.length} sheet)`, file.name);
-  toast(`Đã nhập ${targets.length} sheet · ${nRows} dòng · ${nF} hàm`, 'ok');
+  logActivity(store.user, `nhập Excel (${targets.length} trang tính)`, file.name);
+  toast(`Đã nhập ${targets.length} trang tính · ${nRows} dòng · ${nF} hàm`, 'ok');
   return targets.map(t => t.id);
 }

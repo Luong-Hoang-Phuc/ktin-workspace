@@ -60,9 +60,9 @@ export function mountPicker(el, { choose }) {
             h('div', { class: 'go' }, 'Vào làm việc →')));
       })),
       h('div', { class: 'shared' },
-        h('a', { class: 'sh', href: '#/docs/lecturer' }, h('b', {}, '📁 Tài liệu'), h('span', {}, `Giảng viên · ${counts.lect} file  |  Nhóm · ${counts.team} file`)),
-        h('button', { class: 'sh', onclick: () => store.actions.openCanva() }, h('b', {}, '✦ Canva chung'), h('span', {}, canva ? 'Template thuyết trình cho cả 2 sản phẩm' : 'Chưa gắn link – bấm để thêm')),
-        h('div', { class: 'sh' }, h('b', {}, '● Đang online'), h('span', {}, onlineOthers.length ? onlineOthers.map(o => `${o.name}${productOf(o.productId) ? ' (' + productOf(o.productId).name + ')' : ''}`).join(' · ') : 'Chỉ có bạn'))));
+        h('a', { class: 'sh', href: '#/docs/lecturer' }, h('b', {}, '📁 Tài liệu'), h('span', {}, `Giảng viên · ${counts.lect} tệp  |  Nhóm · ${counts.team} tệp`)),
+        h('button', { class: 'sh', onclick: () => store.actions.openCanva() }, h('b', {}, '✦ Canva chung'), h('span', {}, canva ? 'Mẫu thuyết trình cho cả 2 sản phẩm' : 'Chưa gắn liên kết – bấm để thêm')),
+        h('div', { class: 'sh' }, h('b', {}, '● Đang trực tuyến'), h('span', {}, onlineOthers.length ? onlineOthers.map(o => `${o.name}${productOf(o.productId) ? ' (' + productOf(o.productId).name + ')' : ''}`).join(' · ') : 'Chỉ có bạn'))));
   }
   render(); load();
   offs.push(on('online', render), on('settings', render), on('products', render));

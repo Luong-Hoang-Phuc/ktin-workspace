@@ -102,7 +102,7 @@ const db = {
     const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
     state.blobs[path] = data;
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
-    catch { delete state.blobs[path]; throw new Error('Chế độ demo: bộ nhớ trình duyệt đầy (file quá lớn). Hãy cấu hình Supabase để upload file thật.'); }
+    catch { delete state.blobs[path]; throw new Error('Chế độ xem thử: bộ nhớ trình duyệt đầy (tệp quá lớn). Hãy cấu hình Supabase để tải lên tệp thật.'); }
     return path;
   },
   async fileUrl(path) { return state.blobs[path] || '#'; },

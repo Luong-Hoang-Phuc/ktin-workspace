@@ -38,8 +38,8 @@ export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], i
       tables.map(t => h('button', { class: `dt-pill ${curKey === t.id ? 'on' : ''}`, onclick: () => open(t.id) }, '▦ ', t.name)),
       h('button', { class: 'btn btn-sm', onclick: (e) => popMenu(e.currentTarget, [{ icon: '＋', label: 'Bảng trống', run: () => create(BLANK_SHEET) }, ...(templates.length ? ['-'] : []), ...templates.map(T => ({ icon: '▦', label: 'Mẫu: ' + T.name, run: () => create(T) }))]) }, '＋ Bảng mới ▾'),
       h('div', { class: 'grow' }),
-      h('button', { class: 'btn btn-sm btn-xl', title: 'Nhập file Excel (.xlsx) – mỗi sheet thành một bảng, giữ nguyên hàm', onclick: () => pickExcel(folder, book.data) }, '⬆ Nhập Excel'),
-      h('button', { class: 'btn btn-sm btn-xl', title: 'Tải toàn bộ bảng của mục này thành file Excel (.xlsx) có hàm', onclick: () => exportExcel(book.data, title) }, '⬇ Tải Excel'));
+      h('button', { class: 'btn btn-sm btn-xl', title: 'Nhập tệp Excel (.xlsx) – mỗi trang tính thành một bảng, giữ nguyên hàm', onclick: () => pickExcel(folder, book.data) }, '⬆ Nhập Excel'),
+      h('button', { class: 'btn btn-sm btn-xl', title: 'Tải toàn bộ bảng của mục này thành tệp Excel (.xlsx) có hàm', onclick: () => exportExcel(book.data, title) }, '⬇ Tải Excel'));
   }
   function open(key) {
     if (!keys().includes(key)) key = keys()[0] ?? null;
@@ -349,7 +349,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   function importCsv() {
     const inp = h('input', { type: 'file', accept: '.csv,text/csv', onchange: async (e) => {
       const f = e.target.files[0]; if (!f) return;
-      const parsed = parseCsv((await f.text()).replace(/^﻿/, '')); if (parsed.length < 2) { toast('File CSV trống', 'error'); return; }
+      const parsed = parseCsv((await f.text()).replace(/^﻿/, '')); if (parsed.length < 2) { toast('Tệp CSV trống', 'error'); return; }
       const [head, ...body] = parsed;
       const cs = [...cols()];
       const map = head.map(lbl => { let c = cs.find(x => x.label.toLowerCase() === lbl.trim().toLowerCase()); if (!c) { c = { key: keyOf(lbl, cs), label: lbl.trim() || 'Cột', type: 'text' }; cs.push(c); } return c; });

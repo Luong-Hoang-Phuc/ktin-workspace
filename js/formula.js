@@ -535,7 +535,7 @@ export function fmtNumber(n, fmt = 'auto') {
 export function fmtValue(v, col = {}) {
   if (v instanceof FErr) return v.code;
   if (v == null || v === '') return '';
-  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+  if (typeof v === 'boolean') return v ? 'ĐÚNG' : 'SAI';
   if (isArr(v)) return fmtValue(to2D(v)[0][0], col);
   if (col.type === 'date' && typeof v === 'string' && ISO.test(v)) return fmtNumber(dateToSerial(v), 'date');
   const numeric = typeof v === 'number' || ((col.type === 'number' || col.formula || (col.fmt && col.fmt !== 'auto')) && parseNum(v) != null && typeof v !== 'string') || (col.type === 'number' && typeof v === 'string' && parseNum(v) != null && /^[-\d.,\s%]+$/.test(v));
