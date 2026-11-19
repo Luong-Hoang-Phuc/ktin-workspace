@@ -1,0 +1,7 @@
+{
+  // Cấu hình Cloudflare Workers (web tĩnh): nén code bằng build.sh rồi đăng thư mục dist
+  "name": "ktin-workspace",
+  "compatibility_date": "2026-11-01",
+  "build": { "command": "sh build.sh" },
+  "assets": { "directory": "./dist" }
+}

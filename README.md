@@ -82,7 +82,8 @@ supabase/setup.sql      tạo bảng, bảo mật, realtime, kho file, dữ li�
 
 ## Đăng web bằng Cloudflare Pages (repo riêng tư, code được nén)
 
-- Build command: `sh build.sh`
+- Cloudflare Workers: tệp `wrangler.jsonc` đã khai báo sẵn, deploy command `npx wrangler deploy` tự chạy `build.sh` rồi đăng `dist/`.
+- Cloudflare Pages: Build command: `sh build.sh`
 - Build output directory: `dist`
 - `build.sh` nén và làm rối toàn bộ JS/CSS vào `dist/` bằng esbuild; mã gốc trong repo giữ nguyên để sửa.
 - `robots.txt`, `_headers` và thẻ `meta robots` chặn bot tìm kiếm / bot AI tuân thủ quy tắc.
