@@ -49,7 +49,7 @@ export function mountSpecs(el, { product, folder }) {
       field('name', 'Tên sản phẩm', 'VD: Hộp kem dưỡng'),
       field('subtitle', 'Mô tả ngắn', 'Kiểu dáng · kích thước · giấy · màu in'),
       h('div', { class: 'row', style: { gap: '12px', alignItems: 'flex-start' } }, h('div', { class: 'grow' }, field('qty', 'Số lượng', '50.000 hộp')), h('div', { class: 'grow' }, field('due', 'Thời hạn', 'Giao 15 ngày'))),
-      h('p', { class: 'small muted' }, 'Bảng thông số chi tiết (cấu trúc, vật liệu, màu in, gia công bề mặt) nằm ở tab ', h('a', { href: `#/p/${p.id}/specs/tables` }, 'Bảng dữ liệu'), '. Tệp bản vẽ khai triển, ảnh tham khảo ở tab ', h('a', { href: `#/p/${p.id}/specs/files` }, 'Tệp đính kèm'), '.'));
+      h('p', { class: 'small muted' }, 'Bảng thông số chi tiết (cấu trúc, vật liệu, màu in, gia công bề mặt) là các tab bảng bên cạnh. Bản vẽ khai triển, ảnh tham khảo: tải lên ở ', h('a', { href: `#/p/${p.id}/specs/files` }, 'Trang xem › Tệp đính kèm'), '.'));
   }
 
   async function upload(file) {

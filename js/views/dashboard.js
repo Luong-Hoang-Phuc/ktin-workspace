@@ -1,8 +1,10 @@
 import db, { logActivity } from '../db.js';
-import { store, on, nameOf, profileOf, productOf } from '../store.js';
+import { store, on, nameOf, profileOf, productOf, sectionFolder } from '../store.js';
 import { h, fmtTime, avatar, toastErr, fill } from '../ui.js';
 import { PROGRESS_NAME, STATUS, STEPS, PROGRESS_COLUMNS, SECTIONS } from './templates.js';
 import { productThumb } from './picker.js';
+import { watchSheets, readFigures } from './viewer.js';
+import { fmtNumber } from '../formula.js';
 
 // Tổng quan của một sản phẩm
 export function mountOverview(el, { product, folder }) {
@@ -10,11 +12,12 @@ export function mountOverview(el, { product, folder }) {
   const page = h('div', { class: 'page' });
   el.append(page);
   const heroBox = h('div');
+  const figBox = h('div', { class: 'kpis' });
   const progBox = h('div', { class: 'card card-pad' });
   const teamBox = h('div', { class: 'card card-pad' });
   const feedBox = h('div', { class: 'card card-pad' });
-  page.append(heroBox,
-    db.demo ? h('div', { class: 'demo-note', style: { marginTop: '14px' } }, h('b', {}, 'Bản xem thử. '), 'Bấm “▶ Mô phỏng nhóm” ở thanh trên để xem Minh Anh và Quốc Bảo sửa dữ liệu máy, kéo bảng trắng, gõ ghi chú, upload tài liệu theo thời gian thực. Đổi sản phẩm: nút ☰ góc trái.') : null,
+  page.append(heroBox, figBox,
+    db.demo ? h('div', { class: 'demo-note', style: { marginTop: '14px' } }, h('b', {}, 'Bản xem thử. '), 'Các mục 1–8 bên trái là trang xem (hiển thị · tệp đính kèm · ghi chú). Nhập số liệu như Excel ở ', h('b', {}, '🗄 Cơ sở dữ liệu'), ' trên thanh trên cùng. Bấm “▶ Mô phỏng nhóm” để xem bạn cùng nhóm sửa dữ liệu theo thời gian thực. Đổi sản phẩm: nút ☰.') : null,
     h('div', { class: 'dash-grid' }, progBox, h('div', { style: { display: 'grid', gap: '16px', alignContent: 'start' } }, teamBox, feedBox)));
 
   function renderHero() {
@@ -26,8 +29,9 @@ export function mountOverview(el, { product, folder }) {
         h('h1', { class: 'serif' }, p.name), h('p', {}, p.subtitle),
         h('div', { class: 'meta' }, p.qty ? h('span', {}, p.qty) : null, p.due ? h('span', {}, p.due) : null)),
       h('div', { class: 'hero-actions' },
-        h('a', { class: 'btn btn-sm', href: `#/p/${p.id}/specs` }, p.image_path ? '✎ Sửa thông số & ảnh' : '⬆ Tải ảnh sản phẩm'),
-        h('a', { class: 'btn btn-sm btn-primary', href: `#/p/${p.id}/factory` }, '① Phương án nhà máy →'))));
+        h('a', { class: 'btn btn-sm btn-primary', href: `#/db/${p.id}/factory` }, '🗄 Mở Cơ sở dữ liệu'),
+        h('a', { class: 'btn btn-sm', href: `#/db/${p.id}/specs` }, p.image_path ? '✎ Sửa thông số & ảnh' : '⬆ Tải ảnh sản phẩm'),
+        h('a', { class: 'btn btn-sm', href: `#/p/${p.id}/plan` }, '③ Xem phương án sản xuất'))));
   }
 
   // ---------- tiến độ (để trống cho nhóm tự cập nhật) ----------
@@ -85,6 +89,21 @@ export function mountOverview(el, { product, folder }) {
         h('div', {}, h('b', {}, nameOf(a.user_id)), ' ', a.action, ' ', a.target ? h('i', {}, '“' + a.target + '”') : '', h('div', { class: 't' }, fmtTime(a.created_at))))))
         : h('p', { class: 'muted small' }, 'Chưa có hoạt động nào.'));
   }
+
+  // ---------- số liệu chính (lấy từ Cơ sở dữ liệu) ----------
+  const figs = {};
+  const renderFigs = () => {
+    const f = Object.assign({}, ...Object.values(figs));
+    const money = (x) => x?.value != null ? fmtNumber(x.value, 'vnd') : '—';
+    const S = f.schedule; const ok = S && isFinite(S.start) && isFinite(S.end);
+    fill(figBox,
+      h('a', { class: 'kpi hl', href: `#/p/${product.id}/cost` }, h('span', {}, 'Giá bán / 1 SP'), h('b', { class: 'serif' }, money(f.GBSP)), h('small', {}, f.LN?.tyle != null ? `Lợi nhuận ${f.LN.tyle} %` : 'mục 7')),
+      h('a', { class: 'kpi', href: `#/p/${product.id}/cost` }, h('span', {}, 'Giá thành / 1 SP'), h('b', { class: 'serif' }, money(f.GTSP)), h('small', {}, 'mục 7')),
+      h('a', { class: 'kpi', href: `#/p/${product.id}/time` }, h('span', {}, 'Σ Thời gian làm việc'), h('b', { class: 'serif' }, f.tlv != null ? fmtNumber(f.tlv, 'dec2') + ' h' : '—'), h('small', {}, 'mục 6')),
+      h('a', { class: 'kpi', href: `#/p/${product.id}/schedule` }, h('span', {}, 'Lịch sản xuất'), h('b', { class: 'serif' }, ok ? `${S.end - S.start + 1} ngày` : '—'), h('small', {}, ok ? `${fmtNumber(S.start, 'date')} → ${fmtNumber(S.end, 'date')}` : 'mục 8')));
+  };
+  for (const k of ['cost', 'time', 'schedule']) { const fo = sectionFolder(product.id, k); if (fo) offs.push(watchSheets(fo.id, (sh) => { figs[k] = readFigures(sh); renderFigs(); })); }
+  renderFigs();
 
   renderHero(); renderTeam();
   loadProgress().catch(toastErr); loadFeed().catch(toastErr);

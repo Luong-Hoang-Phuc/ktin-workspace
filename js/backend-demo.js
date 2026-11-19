@@ -1,7 +1,7 @@
 // CHẾ ĐỘ DEMO: dữ liệu lưu trong trình duyệt (localStorage), "realtime" giữa các tab qua BroadcastChannel.
 // Dùng để xem thử giao diện khi chưa cấu hình Supabase.
 import { buildSeed } from './demo-seed.js';
-const KEY = 'ktin-demo-v3';
+const KEY = 'ktin-demo-v4';
 let bc = null; try { bc = new BroadcastChannel('ktin-demo'); } catch {}
 const listeners = new Set();
 const rooms = new Map();
@@ -56,7 +56,7 @@ const db = {
   async signOut() { state.user = null; save(); authCbs.forEach(cb => cb(null)); },
 
   async select(table, { eq = {}, order = null, isNull = [] } = {}) {
-    let rows = (state.t[table] || []).filter(r => Object.entries(eq).every(([k, v]) => r[k] === v) && isNull.every(k => r[k] == null));
+    let rows = (state.t[table] || []).filter(r => Object.entries(eq).every(([k, v]) => (r[k] ?? null) === v) && isNull.every(k => r[k] == null));
     if (order) rows = [...rows].sort((a, b) => (a[order[0]] > b[order[0]] ? 1 : a[order[0]] < b[order[0]] ? -1 : 0) * (order[1] === false ? -1 : 1));
     return structuredClone(rows);
   },

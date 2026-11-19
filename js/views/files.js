@@ -1,5 +1,5 @@
 import db, { logActivity } from '../db.js';
-import { store, on, nameOf, profileOf, folderOf, productOf, docsFolder } from '../store.js';
+import { store, on, nameOf, profileOf, folderOf, productOf, docsFolder, companyFolder } from '../store.js';
 import { SECTIONS } from './templates.js';
 import { h, fmtSize, fmtTime, fileIcon, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill, downloadNote } from '../ui.js';
 
@@ -15,7 +15,7 @@ function typeOf(f) {
 }
 export function placeOf(folderId) {
   const fo = folderOf(folderId); if (!fo) return '—';
-  if (!fo.product_id) return fo.section === 'team' ? 'Chung' : fo.name;
+  if (!fo.product_id) return fo.section === 'team' ? 'Chung' : fo.section === 'factory' ? 'Công ty › 1. Phương án nhà máy' : fo.name;
   const s = SECTIONS.find(x => x.key === fo.section);
   return `${productOf(fo.product_id)?.name || '?'} › ${s?.n ? s.n + '. ' : ''}${s?.label || fo.name}`;
 }
@@ -38,7 +38,8 @@ export function mountFiles(el, { folder, aggregate = false, lecturer = false }) 
 
   const targetSel = aggregate ? h('select', { class: 'select sel-sm', title: 'File tải lên sẽ lưu vào đâu', onchange: (e) => { target = e.target.value; } },
     h('option', { value: folder.id }, 'Lưu vào: Chung (cả nhóm)'),
-    store.products.map(p => h('optgroup', { label: p.name }, SECTIONS.filter(s => s.n).map(s => { const fo = store.folders.find(x => x.product_id === p.id && x.section === s.key); return fo ? h('option', { value: fo.id }, `${p.name} › ${s.n}. ${s.label}`) : null; })))) : null;
+    companyFolder() ? h('option', { value: companyFolder().id }, 'Công ty › 1. Phương án nhà máy (chung)') : null,
+    store.products.map(p => h('optgroup', { label: p.name }, SECTIONS.filter(s => s.n && !s.company).map(s => { const fo = store.folders.find(x => x.product_id === p.id && x.section === s.key); return fo ? h('option', { value: fo.id }, `${p.name} › ${s.n}. ${s.label}`) : null; })))) : null;
   fill(wrap, subBox,
     lecturer ? h('p', { class: 'muted small', style: { marginTop: 0 } }, 'Tài liệu gốc giảng viên cung cấp: 6 bài giảng hướng dẫn và file cơ sở dữ liệu. Chỉ xem và tải về, hạn chế sửa.') : null,
     aggregate ? h('p', { class: 'muted small', style: { marginTop: 0 } }, 'Toàn bộ file nhóm đã gửi lên: tài liệu chung và tệp đính kèm trong từng mục của Hộp, Sách. Lọc theo người gửi, loại file hoặc nội dung.') : null,

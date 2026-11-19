@@ -1,16 +1,18 @@
 import db, { logActivity } from './db.js';
 import { APP_NAME, APP_SUBTITLE } from './config.js';
-import { store, on, emit, productOf, sectionFolder, docsFolder, setWhere, folderOf } from './store.js';
+import { store, on, emit, productOf, sectionFolder, docsFolder, companyFolder, folderFor, setWhere, folderOf } from './store.js';
 import { h, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill } from './ui.js';
-import { SECTIONS, TAB_LABELS } from './views/templates.js';
+import { SECTIONS, WORK_SECTIONS, VIEW_TABS, SECTION_TEMPLATES } from './views/templates.js';
 import { mountPicker, productThumb } from './views/picker.js';
 import { mountOverview } from './views/dashboard.js';
 import { mountFiles } from './views/files.js';
 import { mountNotes } from './views/notes.js';
 import { mountBoards } from './views/board.js';
-import { mountTables } from './views/tables.js';
-import { mountFactory, mountMachines } from './views/factory.js';
+import { mountSheets } from './views/sheet.js';
+import { mountFactoryTree, mountMachineTable } from './views/factory.js';
 import { mountSpecs } from './views/specs.js';
+import { mountPlan } from './views/plan.js';
+import { mountSectionView } from './views/viewer.js';
 
 const app = document.getElementById('app');
 let cleanup = null;
@@ -101,7 +103,7 @@ function renderLogin() {
         h('div', { class: 'row', style: { gap: '10px', marginBottom: '48px' } }, h('div', { class: 'mark' }, 'K'), h('b', { class: 'serif', style: { fontSize: '18px' } }, APP_NAME)),
         h('div', { class: 'stamp' }, 'ĐỒ ÁN KT&TCSX IN'),
         h('h1', { class: 'serif' }, 'Không gian làm việc chung cho đồ án in'),
-        h('p', {}, 'Mỗi sản phẩm một không gian riêng: phương án nhà máy, thông số, phương án sản xuất, vật tư, thời gian, giá thành, kế hoạch. Tài liệu và link Canva dùng chung cho cả nhóm.'),
+        h('p', {}, 'Công cụ làm đồ án Kinh tế & tổ chức sản xuất in: trang xem cho từng mục của đồ án, Cơ sở dữ liệu nhập như Excel, tài liệu và link Canva dùng chung cho cả nhóm.'),
         h('div', { class: 'login-products' }, h('div', {}, productThumb({ kind: 'hop' }, true), h('span', {}, 'Hộp')), h('div', {}, productThumb({ kind: 'sach' }, true), h('span', {}, 'Sách')))),
       h('div', { class: 'small', style: { opacity: .7 } }, 'Chỉ thành viên được mời mới đăng nhập được.')),
     h('div', { class: 'login-box' }, h('div', { class: 'login-card' },
@@ -130,19 +132,22 @@ function renderShell() {
 function renderTop() {
   if (!topEl) return;
   const me = store.me, p = productOf(store.productId);
-  const inProduct = store.route.view === 'product';
+  const v = store.route.view;
+  const inProduct = v === 'product' || v === 'db';
   const canva = store.settings.get('canva_url');
   fill(topEl,
     h('button', { class: 'burger', title: 'Menu · chuyển sản phẩm', onclick: openDrawer }, h('span'), h('span'), h('span')),
-    h('a', { class: 'brand', href: inProduct || store.route.view === 'docs' ? `#/p/${store.productId}/overview` : '#/pick' }, h('span', { class: 'mark' }, 'K'), h('b', { class: 'serif' }, 'KTIN')),
-    p && store.route.view !== 'pick' ? h('div', { class: 'cur-product', title: 'Đổi sản phẩm: bấm ☰' }, productThumb(p), h('div', {}, h('small', {}, 'Đang làm'), h('b', {}, p.name))) : null,
+    h('a', { class: 'brand', href: p && v !== 'pick' ? `#/p/${store.productId}/overview` : '#/pick' }, h('span', { class: 'mark' }, 'K'), h('b', { class: 'serif' }, 'KTIN')),
+    p && v !== 'pick' ? h('div', { class: 'cur-product', title: 'Đổi sản phẩm: bấm ☰' }, productThumb(p), h('div', {}, h('small', {}, v === 'db' ? 'Đang nhập liệu' : 'Đang xem'), h('b', {}, p.name))) : null,
     h('div', { class: 'grow' }),
     db.demo ? h('span', { class: 'demo-pill', title: 'Dữ liệu chỉ lưu trên trình duyệt này' }, 'Bản xem thử') : null,
     db.demo ? h('button', { class: `btn btn-sm ${sim?.isRunning() ? 'btn-primary' : 'btn-ghost'}`, title: 'Giả lập 2 bạn cùng nhóm đang làm việc', onclick: toggleSim }, sim?.isRunning() ? '⏸ Dừng mô phỏng' : '▶ Mô phỏng nhóm') : null,
     h('div', { class: 'canva-group' },
       h('button', { class: 'btn btn-canva btn-sm', title: canva ? 'Mở Canva – template thuyết trình (chung 2 sản phẩm)' : 'Chưa gắn link Canva', onclick: openCanva }, '✦ Canva'),
       h('button', { class: 'icon-btn light', title: 'Sửa link Canva', onclick: editCanva }, '✎')),
-    h('a', { class: `btn btn-sm btn-ghost ${store.route.view === 'docs' ? 'on' : ''}`, href: '#/docs/lecturer' }, '📁 Tài liệu'),
+    h('div', { class: 'top-icons' },
+      h('a', { class: `tico ${v === 'docs' ? 'on' : ''}`, href: '#/docs/lecturer', title: 'Tài liệu giảng viên & nhóm' }, h('span', {}, '📁'), 'Tài liệu'),
+      h('a', { class: `tico db ${v === 'db' ? 'on' : ''}`, href: dbHref(), title: 'Cơ sở dữ liệu – nơi nhập liệu như Excel cho 8 mục' }, h('span', {}, '🗄'), 'Cơ sở dữ liệu')),
     h('div', { class: 'online' }, store.online.map(o => {
       const a = avatar({ display_name: o.name, color: o.color }, 30);
       const pp = productOf(o.productId);
@@ -153,22 +158,40 @@ function renderTop() {
   );
 }
 
+function dbHref() {
+  const r = store.route, pid = store.productId || store.products[0]?.id;
+  const sec = (r.view === 'product' && r.section !== 'overview') ? r.section : 'factory';
+  return `#/db/${pid}/${sec}`;
+}
 function renderSide() {
   if (!sideEl) return;
   const r = store.route, pid = store.productId;
   shellEl.classList.toggle('no-side', r.view === 'pick');
+  sideEl.classList.toggle('db-mode', r.view === 'db');
   if (r.view === 'pick' || !pid) { fill(sideEl); return; }
-  const here = (key) => store.online.filter(o => o.id !== store.user.id && o.productId === pid && o.section === key);
+  const here = (key, mode) => store.online.filter(o => o.id !== store.user.id && (key === 'factory' || o.productId === pid) && o.section === key && (o.mode || 'view') === mode);
+  const item = (s, mode) => {
+    const on = r.view === (mode === 'db' ? 'db' : 'product') && r.section === s.key;
+    return h('a', { class: `nav ${on ? 'on' : ''}`, href: mode === 'db' ? `#/db/${pid}/${s.key}` : `#/p/${pid}/${s.key}` },
+      h('span', { class: 'ni' }, s.n ? String(s.n) : '◎'), h('span', { class: 'nl' }, s.label), s.company ? h('span', { class: 'tagc', title: 'Chung cho cả Hộp và Sách' }, 'chung') : null,
+      here(s.key, mode).length ? h('span', { class: 'here' }, here(s.key, mode).slice(0, 3).map(o => avatar({ display_name: o.name, color: o.color }, 18))) : null);
+  };
+  if (r.view === 'db') {
+    fill(sideEl,
+      h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu'), h('small', {}, 'Nhập liệu như Excel – trang xem lấy số từ đây')),
+      WORK_SECTIONS.map(s => item(s, 'db')),
+      h('div', { class: 'side-head' }, 'Chuyển'),
+      h('a', { class: 'nav', href: `#/p/${pid}/${r.section || 'overview'}` }, h('span', { class: 'ni' }, '👁'), h('span', { class: 'nl' }, 'Về trang xem')),
+      h('a', { class: 'nav', href: '#/docs/lecturer' }, h('span', { class: 'ni' }, '📁'), h('span', { class: 'nl' }, 'Tài liệu')));
+    return;
+  }
   fill(sideEl,
+    h('div', { class: 'side-head' }, 'Trang xem'),
+    SECTIONS.map(s => item(s, 'view')),
     h('div', { class: 'side-head' }, 'Làm việc'),
-    SECTIONS.map(s => [
-      h('a', { class: `nav ${r.view === 'product' && r.section === s.key && !(s.key === 'factory' && r.tab === 'machines') ? 'on' : ''}`, href: `#/p/${pid}/${s.key}` },
-        h('span', { class: 'ni' }, s.n ? String(s.n) : '◎'), h('span', { class: 'nl' }, s.label),
-        here(s.key).length ? h('span', { class: 'here' }, here(s.key).slice(0, 3).map(o => avatar({ display_name: o.name, color: o.color }, 18))) : null),
-      s.key === 'factory' ? h('a', { class: `nav sub ${r.view === 'product' && r.section === 'factory' && r.tab === 'machines' ? 'on' : ''}`, href: `#/p/${pid}/factory/machines` }, h('span', { class: 'ni' }, '└'), h('span', { class: 'nl' }, 'Dữ liệu máy')) : null,
-    ]),
-    h('div', { class: 'side-head' }, 'Lưu trữ'),
+    h('a', { class: 'nav nav-db', href: dbHref() }, h('span', { class: 'ni' }, '🗄'), h('span', { class: 'nl' }, 'Cơ sở dữ liệu')),
     h('a', { class: `nav ${r.view === 'docs' ? 'on' : ''}`, href: '#/docs/lecturer' }, h('span', { class: 'ni' }, '📁'), h('span', { class: 'nl' }, 'Tài liệu')),
+    h('a', { class: `nav ${r.view === 'board' ? 'on' : ''}`, href: '#/board' }, h('span', { class: 'ni' }, '✏️'), h('span', { class: 'nl' }, 'Bảng trắng nhóm')),
   );
 }
 
@@ -182,8 +205,15 @@ function openDrawer() {
     store.products.map(p => h('button', { class: `dr-prod ${p.id === store.productId ? 'on' : ''}`, onclick: () => { closeDrawer(); go(`#/p/${p.id}/overview`); } },
       productThumb(p), h('div', { class: 'grow' }, h('b', {}, p.name, p.id === store.productId ? h('span', { class: 'dr-cur' }, ' · đang làm') : null), h('small', {}, p.subtitle)))),
     item('▦', 'Xem trang chọn sản phẩm', () => go('#/pick')),
+    store.productId ? h('div', { class: 'dr-mobile' },
+      h('div', { class: 'dr-sec' }, 'Trang xem'),
+      SECTIONS.map(sec => item(sec.n || '◎', sec.label, () => go(`#/p/${store.productId}/${sec.key}`), { on: store.route.view === 'product' && store.route.section === sec.key })),
+      h('div', { class: 'dr-sec' }, 'Cơ sở dữ liệu (nhập liệu)'),
+      WORK_SECTIONS.map(sec => item(sec.n, sec.label, () => go(`#/db/${store.productId}/${sec.key}`), { on: store.route.view === 'db' && store.route.section === sec.key }))) : null,
     h('div', { class: 'dr-sec' }, 'Dùng chung'),
+    item('🗄', 'Cơ sở dữ liệu', () => go(dbHref()), { sub: 'Nhập liệu 8 mục như Excel' }),
     item('📁', 'Tài liệu', () => go('#/docs/lecturer'), { sub: 'Giảng viên · Nhóm' }),
+    item('✏️', 'Bảng trắng nhóm', () => go('#/board'), { sub: 'Phác thảo, brainstorm' }),
     item('✦', 'Canva – template thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn link' }),
     item('✎', 'Sửa link Canva', editCanva),
     h('div', { class: 'dr-sec' }, 'Tài khoản'),
@@ -252,25 +282,35 @@ async function toggleSim() {
 // ĐIỀU HƯỚNG
 // =====================================================================
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
-const VIEWS = { tree: mountFactory, machines: mountMachines, specs: mountSpecs, tables: mountTables, notes: mountNotes, boards: mountBoards, files: mountFiles };
 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   document.querySelectorAll('.menu').forEach(m => m.remove());
   closeDrawer?.();
-  if (parts[0] === 'p' && productOf(parts[1])) {
-    const sec = SECTIONS.find(s => s.key === parts[2]) || SECTIONS[0];
+  const fallbackPid = () => productOf(store.productId) ? store.productId : productOf(mem.get(LAST)) ? mem.get(LAST) : store.products[0]?.id;
+  if ((parts[0] === 'p' || parts[0] === 'db') && productOf(parts[1])) {
     store.productId = parts[1]; mem.set(LAST, parts[1]);
-    store.route = { view: 'product', section: sec.key, tab: sec.tabs.includes(parts[3]) ? parts[3] : sec.tabs[0], sub: parts[4] || null };
-    renderProduct(sec);
+    if (parts[0] === 'p') {
+      const sec = SECTIONS.find(s => s.key === parts[2]) || SECTIONS[0];
+      store.route = { view: 'product', section: sec.key, tab: VIEW_TABS.some(([k]) => k === parts[3]) ? parts[3] : 'view', sub: parts[4] || null };
+      renderProduct(sec);
+    } else {
+      const sec = WORK_SECTIONS.find(s => s.key === parts[2]) || WORK_SECTIONS[0];
+      store.route = { view: 'db', section: sec.key, sub: parts[3] || null };
+      renderDb(sec);
+    }
   } else if (parts[0] === 'docs') {
-    if (!store.productId) store.productId = productOf(mem.get(LAST)) ? mem.get(LAST) : store.products[0]?.id;
+    store.productId = fallbackPid();
     store.route = { view: 'docs', branch: parts[1] === 'team' ? 'team' : 'lecturer' };
     renderDocs();
+  } else if (parts[0] === 'board') {
+    store.productId = fallbackPid();
+    store.route = { view: 'board', sub: parts[1] || null };
+    renderBoard();
   } else {
     store.route = { view: 'pick' };
-    setWhere({ productId: null, section: null, sectionLabel: null, docs: false });
+    setWhere({ productId: null, section: null, sectionLabel: null, docs: false, mode: null });
     fill(mainEl);
     cleanup = mountPicker(mainEl, { choose: (p) => go(`#/p/${p.id}/overview`) });
   }
@@ -279,37 +319,72 @@ function route() {
 }
 
 async function ensureFolder(pid, sec) {
-  let f = sectionFolder(pid, sec.key);
-  if (!f) { f = await db.insert('folders', { product_id: pid, section: sec.key, name: sec.label, parent_id: null, position: SECTIONS.indexOf(sec) }); if (!folderOf(f.id)) store.folders.push(f); }
+  let f = folderFor(pid, sec.key);
+  if (!f) {
+    f = await db.insert('folders', { product_id: sec.company ? null : pid, section: sec.key, name: sec.company ? 'Phương án nhà máy (chung)' : sec.label, parent_id: null, position: SECTIONS.indexOf(sec) });
+    if (!folderOf(f.id)) store.folders.push(f);
+  }
   return f;
 }
+const secLabel = (sec) => (sec.n ? sec.n + '. ' : '') + sec.label;
 
+// ---------- TRANG XEM: Hiển thị · Tệp đính kèm · Ghi chú ----------
 async function renderProduct(sec) {
   const { tab, sub } = store.route;
   const p = productOf(store.productId);
-  setWhere({ productId: p.id, section: sec.key, sectionLabel: (sec.n ? sec.n + '. ' : '') + sec.label, docs: false });
+  setWhere({ productId: p.id, section: sec.key, sectionLabel: secLabel(sec), docs: false, mode: 'view' });
   const folder = await ensureFolder(p.id, sec).catch(toastErr);
-  if (!folder) return;
-  if (sec.key === 'overview') {
-    fill(mainEl);
-    cleanup = mountOverview(mainEl, { product: p, folder });
-    return;
-  }
+  if (!folder || store.route.section !== sec.key || store.route.view !== 'product') return;
+  if (sec.key === 'overview') { fill(mainEl); cleanup = mountOverview(mainEl, { product: p, folder }); return; }
   const body = h('div', { class: 'tab-body' });
   const head = h('div', { class: 'page-head' },
-    h('div', { class: 'crumbs' }, h('a', { href: `#/p/${p.id}/overview` }, p.name), h('span', {}, '›'), h('span', {}, `${sec.n}. ${sec.label}`)),
-    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, sec.n), h('h1', { class: 'serif' }, sec.label)),
-    h('div', { class: 'tabs' }, sec.tabs.map(t => h('a', { class: `tab ${t === tab ? 'on' : ''}`, href: `#/p/${p.id}/${sec.key}/${t}` }, TAB_LABELS[t]))));
+    h('div', { class: 'crumbs' }, h('a', { href: `#/p/${p.id}/overview` }, p.name), h('span', {}, '›'), sec.company ? [h('span', {}, 'Công ty (chung)'), h('span', {}, '›')] : null, h('span', {}, secLabel(sec))),
+    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, sec.n), h('h1', { class: 'serif' }, sec.label), sec.company ? h('span', { class: 'tagc big' }, 'chung cho Hộp & Sách') : null,
+      h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm btn-db', href: `#/db/${p.id}/${sec.key}` }, '🗄 Nhập liệu ở Cơ sở dữ liệu')),
+    h('div', { class: 'tabs' }, VIEW_TABS.map(([t, label]) => h('a', { class: `tab ${t === tab ? 'on' : ''}`, href: `#/p/${p.id}/${sec.key}/${t}` }, label))));
   fill(mainEl, h('div', { class: 'page-full' }, head, body));
-  cleanup = VIEWS[tab](body, {
-    folder, product: p, sub,
-    go: (s) => { history.replaceState(null, '', `#/p/${p.id}/${sec.key}/${tab}${s ? '/' + s : ''}`); store.route.sub = s; },
-  });
+  const goSub = (s) => { history.replaceState(null, '', `#/p/${p.id}/${sec.key}/${tab}${s ? '/' + s : ''}`); store.route.sub = s; };
+  if (tab === 'files') cleanup = mountFiles(body, { folder });
+  else if (tab === 'notes') cleanup = mountNotes(body, { folder, sub, go: goSub });
+  else cleanup = mountSectionView(body, { product: p, section: sec.key });
+}
+
+// ---------- CƠ SỞ DỮ LIỆU: nơi nhập liệu ----------
+async function renderDb(sec) {
+  const { sub } = store.route;
+  const p = productOf(store.productId);
+  setWhere({ productId: p.id, section: sec.key, sectionLabel: '🗄 ' + secLabel(sec), docs: false, mode: 'db' });
+  const folder = await ensureFolder(p.id, sec).catch(toastErr);
+  if (!folder || store.route.section !== sec.key || store.route.view !== 'db') return;
+  const body = h('div', { class: 'tab-body' });
+  const head = h('div', { class: 'page-head db' },
+    h('div', { class: 'crumbs' }, h('span', {}, '🗄 Cơ sở dữ liệu'), h('span', {}, '›'), h('span', {}, sec.company ? 'Công ty (chung cho Hộp & Sách)' : p.name), h('span', {}, '›'), h('span', {}, secLabel(sec))),
+    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, sec.n), h('h1', { class: 'serif' }, sec.label), h('span', { class: 'stamp small-stamp' }, 'NHẬP LIỆU'),
+      h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm', href: `#/p/${p.id}/${sec.key}` }, '👁 Xem trang hiển thị')));
+  fill(mainEl, h('div', { class: 'page-full' }, head, body));
+  const goSub = (s) => { history.replaceState(null, '', `#/db/${p.id}/${sec.key}${s ? '/' + s : ''}`); store.route.sub = s; };
+  const fixed = {
+    factory: [{ key: 'tree', label: '🏭 Sơ đồ nhà máy', mount: (el) => mountFactoryTree(el, { product: p }) }, { key: 'machines', label: '⚙ Bảng thiết bị', mount: (el) => mountMachineTable(el) }],
+    specs: [{ key: 'info', label: '🖼 Ảnh & thông tin chung', mount: (el) => mountSpecs(el, { product: p, folder }) }],
+    plan: [{ key: 'tree', label: '🌳 Phương án (dạng cây)', mount: (el) => mountPlan(el, { product: p }) }],
+  }[sec.key] || [];
+  const intro = sec.company ? h('p', { class: 'small muted', style: { margin: '0 0 12px' } }, 'Dữ liệu ', h('b', {}, 'chung của công ty'), ' – Hộp và Sách dùng chung: sơ đồ nhà máy, thiết bị, giá vật tư, định mức bù hao, đơn giá lương, tham số chung (trích file CSDL của giảng viên).') : null;
+  cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [], intro });
+}
+
+function renderBoard() {
+  setWhere({ productId: null, section: 'board', sectionLabel: 'Bảng trắng', docs: false, mode: 'view' });
+  const folder = docsFolder('board');
+  const body = h('div', { class: 'tab-body' });
+  const head = h('div', { class: 'page-head' }, h('div', { class: 'crumbs' }, h('span', {}, 'Dùng chung')), h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, '✏️'), h('h1', { class: 'serif' }, 'Bảng trắng nhóm')));
+  fill(mainEl, h('div', { class: 'page-full' }, head, body));
+  if (!folder) { fill(body, h('div', { class: 'page' }, h('div', { class: 'empty' }, 'Chưa có thư mục bảng trắng. Chạy lại supabase/setup.sql.'))); return; }
+  cleanup = mountBoards(body, { folder, sub: store.route.sub, go: (s) => { history.replaceState(null, '', `#/board${s ? '/' + s : ''}`); store.route.sub = s; } });
 }
 
 function renderDocs() {
   const { branch } = store.route;
-  setWhere({ productId: null, section: null, sectionLabel: null, docs: true });
+  setWhere({ productId: null, section: null, sectionLabel: null, docs: true, mode: null });
   const lect = docsFolder('lecturer'), team = docsFolder('team');
   const body = h('div', { class: 'tab-body' });
   const head = h('div', { class: 'page-head' },

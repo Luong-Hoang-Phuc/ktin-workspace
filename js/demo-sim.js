@@ -1,8 +1,7 @@
 // Bản xem thử: mô phỏng 2 thành viên khác đang làm việc để thấy luồng realtime
-import db, { logActivity } from './db.js';
+import db from './db.js';
 import { BOT_A, BOT_B } from './demo-seed.js';
 import { toast } from './ui.js';
-import { store } from './store.js';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let running = false, round = 0;
@@ -11,41 +10,43 @@ export function stop() { running = false; }
 
 const sim = () => db._sim;
 const M = () => sim().meta();
-const where = (bot, kind, section, sectionLabel) => sim().peer({ id: bot.id, name: bot.display_name, color: bot.color, productId: kind ? M().products[kind] : null, section, sectionLabel, docs: !kind && section === 'docs' });
+const where = (bot, kind, section, sectionLabel, mode = 'view') => sim().peer({ id: bot.id, name: bot.display_name, color: bot.color, productId: kind ? M().products[kind] : null, section, sectionLabel, docs: section === 'docs', mode });
 const log = (bot, action, target, kind) => db.insert('activity', { user_id: bot.id, action, target, product_id: kind ? M().products[kind] : null }).catch(() => {});
 const now = () => new Date().toISOString();
 
 const STEPS = [
-  // 1. Minh Anh sửa năng suất máy L640 trong sơ đồ nhà máy Hộp
+  // 1. Minh Anh sửa năng suất L640 trong sơ đồ nhà máy (CSDL, chung công ty)
   async () => {
-    where(BOT_A, 'hop', 'factory', '1. Phương án nhà máy');
-    const nodes = await db.select('factory_nodes', { eq: { product_id: M().products.hop } });
-    const node = nodes.find(n => n.name === 'L640'); if (!node) return;
-    sim().room(`factory-${M().products.hop}`, { t: 'sel', uid: BOT_A.id, name: BOT_A.display_name, color: BOT_A.color, nodeId: node.id, at: Date.now() });
+    where(BOT_A, 'hop', 'factory', '🗄 1. Phương án nhà máy', 'db');
+    const node = (await db.select('factory_nodes')).find(n => n.name === 'L640'); if (!node) return;
+    sim().room('factory-company', { t: 'sel', uid: BOT_A.id, name: BOT_A.display_name, color: BOT_A.color, nodeId: node.id, at: Date.now() });
     await sleep(2000);
     const m = await db.get('machines', node.machine_id); if (!m) return;
     const v = Number(m.cells.ns) === 7000 ? 7500 : 7000;
     await db.update('machines', m.id, { cells: { ...m.cells, ns: v }, updated_by: BOT_A.id, updated_at: now() });
-    log(BOT_A, 'sửa năng suất của', `L640 → ${v.toLocaleString('vi-VN')} tua/h`, 'hop');
+    log(BOT_A, 'sửa năng suất của', `L640 → ${v.toLocaleString('vi-VN')} tua/h`, null);
   },
-  // 2. Quốc Bảo kéo ghi chú trên bảng trắng (Hộp › Phương án sản xuất)
+  // 2. Quốc Bảo sửa năng suất ép nhũ trong bảng Thời gian (Hộp) → công thức tự tính lại
   async () => {
-    where(BOT_B, 'hop', 'plan', '3. Phương án sản xuất');
-    const bid = M().boardId;
-    for (let i = 0; i <= 20 && running; i++) { sim().room(`board-${bid}`, { t: 'cur', uid: BOT_B.id, name: BOT_B.display_name, color: BOT_B.color, x: 300 + i * 30, y: 200 + Math.sin(i / 3) * 60 }); await sleep(90); }
-    const items = await db.select('board_items', { eq: { board_id: bid } });
-    const it = items.find(x => x.kind === 'sticky' && /Kiểm tra/.test(x.data.text)); if (!it) return;
-    const dy = it.data.y > 300 ? -40 : 40; const d0 = { ...it.data };
-    for (let i = 1; i <= 10 && running; i++) { const data = { ...d0, y: d0.y + dy * i / 10 }; sim().room(`board-${bid}`, { t: 'move', id: it.id, data }); sim().room(`board-${bid}`, { t: 'cur', uid: BOT_B.id, name: BOT_B.display_name, color: BOT_B.color, x: data.x + 80, y: data.y + 60 }); await sleep(80); }
-    await db.update('board_items', it.id, { data: { ...d0, y: d0.y + dy }, updated_by: BOT_B.id, updated_at: now() });
+    where(BOT_B, 'hop', 'time', '🗄 6. Thời gian sản xuất', 'db');
+    const tid = M()['hop:time']; if (!tid) return;
+    const rows = await db.select('data_rows', { eq: { table_id: tid } });
+    const r = rows.find(x => x.cells.may === 'en1'); if (!r) return;
+    const k = `${r.id}:ns`;
+    sim().room(`table-${tid}`, { t: 'edit', k, name: BOT_B.display_name });
+    await sleep(1800);
+    const v = Number(r.cells.ns) === 600 ? 800 : 600;
+    await db.update('data_rows', r.id, { cells: { ...r.cells, ns: v }, updated_by: BOT_B.id, updated_at: now() });
+    sim().room(`table-${tid}`, { t: 'done', k });
+    log(BOT_B, 'sửa năng suất ép nhũ', `en1 → ${v} tua/h (bảng Thời gian)`, 'hop');
   },
   // 3. Minh Anh gõ câu trả lời vào ghi chú (Hộp › Phương án sản xuất)
   async () => {
     where(BOT_A, 'hop', 'plan', '3. Phương án sản xuất');
     const f = M().folders['hop:plan'];
     const n = (await db.select('notes', { eq: { folder_id: f } })).find(x => x.title === 'Câu hỏi cho giảng viên'); if (!n) return;
-    const add = '\n   → Thầy trả lời: được giả định, ghi rõ nguồn trong mục 1.5.';
-    let content = n.content;
+    const add = '\n   → Thầy trả lời: được giả định, ghi rõ nguồn trong bảng thiết bị.';
+    const content = n.content;
     if (content.includes(add)) { await db.update('notes', n.id, { content: content.replace(add, ''), updated_by: BOT_A.id, updated_at: now() }); return; }
     const anchor = content.indexOf('\n2.');
     let typed = '';
@@ -53,7 +54,20 @@ const STEPS = [
     await db.update('notes', n.id, { content: content.slice(0, anchor) + typed + content.slice(anchor), updated_by: BOT_A.id, updated_at: now() });
     log(BOT_A, 'cập nhật ghi chú', n.title, 'hop');
   },
-  // 4. Quốc Bảo gửi file vào Tài liệu (Sách › Phương án sản xuất)
+  // 4. Quốc Bảo bật / tắt hiệu ứng “Kéo lụa” cho Hộp → công đoạn Kéo lụa tự được tích
+  async () => {
+    where(BOT_B, 'hop', 'plan', '🗄 3. Phương án sản xuất', 'db');
+    const pid = M().products.hop;
+    const plan = await db.get('product_plans', pid); if (!plan) return;
+    const stage = (await db.select('factory_nodes')).find(n => n.kind === 'stage' && n.tag === 'lua'); if (!stage) return;
+    const kid = (await db.select('factory_nodes', { eq: { parent_id: stage.id } }))[0];
+    const on = !(plan.effects || []).includes('lua');
+    const effects = on ? [...plan.effects, 'lua'] : plan.effects.filter(e => e !== 'lua');
+    const steps = { ...plan.steps, [stage.id]: { on, machines: on && kid ? [kid.machine_id] : [], note: '' } };
+    await db.update('product_plans', pid, { effects, steps, updated_by: BOT_B.id, updated_at: now() });
+    log(BOT_B, `${on ? 'chọn' : 'bỏ'} hiệu ứng Kéo lụa –`, 'Hộp kem dưỡng', 'hop');
+  },
+  // 5. Quốc Bảo gửi file vào Sách › Phương án sản xuất
   async () => {
     where(BOT_B, 'sach', 'plan', '3. Phương án sản xuất');
     const fid = M().folders['sach:plan'];
@@ -64,7 +78,17 @@ const STEPS = [
     await db.insert('files', { folder_id: fid, name, storage_path: path, size: 182000 + round * 3100, mime: 'application/pdf', version: 1, uploaded_by: BOT_B.id, description: `32 trang/tờ 65×86 – phương án ${round}`, created_at: now(), updated_at: now() });
     log(BOT_B, 'đã tải lên', `${name} → Sách › 3. Phương án sản xuất`, 'sach');
   },
-  // 5. Quốc Bảo cập nhật / khoá file Word chung
+  // 6. Minh Anh kéo ghi chú trên bảng trắng nhóm
+  async () => {
+    where(BOT_A, null, 'board', 'Bảng trắng');
+    const bid = M().boardId;
+    for (let i = 0; i <= 20 && running; i++) { sim().room(`board-${bid}`, { t: 'cur', uid: BOT_A.id, name: BOT_A.display_name, color: BOT_A.color, x: 300 + i * 30, y: 200 + Math.sin(i / 3) * 60 }); await sleep(90); }
+    const it = (await db.select('board_items', { eq: { board_id: bid } })).find(x => x.kind === 'sticky' && /Kiểm tra/.test(x.data.text)); if (!it) return;
+    const dy = it.data.y > 300 ? -40 : 40; const d0 = { ...it.data };
+    for (let i = 1; i <= 10 && running; i++) { const data = { ...d0, y: d0.y + dy * i / 10 }; sim().room(`board-${bid}`, { t: 'move', id: it.id, data }); await sleep(80); }
+    await db.update('board_items', it.id, { data: { ...d0, y: d0.y + dy }, updated_by: BOT_A.id, updated_at: now() });
+  },
+  // 7. Quốc Bảo khoá / cập nhật file Word chung
   async () => {
     where(BOT_B, null, 'docs');
     const w = await db.get('files', M().wordId); if (!w) return;
@@ -82,10 +106,9 @@ const STEPS = [
 
 export async function start(onChange) {
   if (running) return; running = true; onChange?.();
-  toast('Bắt đầu mô phỏng: Minh Anh và Quốc Bảo đang làm việc. Mở Phương án nhà máy, Phương án sản xuất hoặc Tài liệu để xem thay đổi.', 'ok');
-  where(BOT_A, 'hop', 'factory', '1. Phương án nhà máy'); where(BOT_B, 'sach', 'plan', '3. Phương án sản xuất');
+  toast('Bắt đầu mô phỏng: Minh Anh và Quốc Bảo đang làm việc. Mở Cơ sở dữ liệu › 1, 3, 6 hoặc trang xem tương ứng để thấy thay đổi.', 'ok');
+  where(BOT_A, 'hop', 'factory', '🗄 1. Phương án nhà máy', 'db'); where(BOT_B, 'hop', 'time', '🗄 6. Thời gian sản xuất', 'db');
   let i = 0;
   while (running) { try { await STEPS[i % STEPS.length](); } catch (e) { console.warn('sim', e); } i++; await sleep(3500); }
   onChange?.();
 }
-void store; void logActivity;
