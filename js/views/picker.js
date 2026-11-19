@@ -48,11 +48,10 @@ export function mountPicker(el, { choose }) {
     fill(page,
       h('div', { class: 'eyebrow serif' }, `Xin chào ${me?.display_name || ''} · Nhóm ${store.profiles.size} thành viên`),
       h('h1', { class: 'serif' }, 'Chọn sản phẩm để vào không gian làm việc'),
-      h('p', { class: 'muted' }, 'Sau khi chọn, trang này sẽ ẩn đi. Muốn đổi sản phẩm: bấm nút ☰ ở góc trên bên trái.'),
       h('div', { class: 'products' }, store.products.map(p => {
         const pr = progress[p.id] || { done: 0, total: 8 };
         return h('button', { class: 'prod', onclick: () => choose(p) },
-          h('div', { class: 'thumb' }, productThumb(p, true), p.image_path ? null : h('span', { class: 'hint' }, 'Chưa có ảnh · tải lên ở “2. Thông số sản phẩm”')),
+          h('div', { class: 'thumb' }, productThumb(p, true)),
           h('div', { class: 'stamp' }, p.kind === 'sach' ? 'ĐƠN HÀNG 2' : 'ĐƠN HÀNG 1'),
           h('div', { class: 'pbody' },
             h('h2', { class: 'serif' }, p.name), h('p', {}, p.subtitle),

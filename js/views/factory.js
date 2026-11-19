@@ -5,16 +5,11 @@
 import db, { logActivity } from '../db.js';
 import { store, on, jsonSetting, productOf } from '../store.js';
 import { h, fill, toast, toastErr, prompt, confirmBox, modal, popMenu, avatar } from '../ui.js';
-import { MACHINE_COLUMNS, PHASES, LINES, EFFECTS } from './templates.js';
+import { MACHINE_COLUMNS, PHASES, LINES } from './templates.js';
 import { parseNum, fmtValue } from '../formula.js';
 
 const show = (c, v) => fmtValue(c.type === 'number' ? (parseNum(v) ?? v) : v, c);
 export const machineCols = () => jsonSetting('machine_columns', MACHINE_COLUMNS);
-const brief = (m) => {
-  if (!m) return 'Chưa liên kết dữ liệu máy';
-  const c = m.cells || {};
-  return [c.somau ? `${c.somau} màu` : null, c.ns ? `${show({ type: 'number' }, c.ns)} ${c.dv || ''}`.trim() : null].filter(Boolean).join(' · ') || '—';
-};
 const keyOf = (label, cols) => { let k = label.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) || 'ts'; let i = 2; const b = k; while (cols.some(c => c.key === k)) k = b + i++; return k; };
 
 // Dữ liệu dùng chung: cây nhà máy + máy + phương án SX (để biết máy nào sản phẩm nào dùng)
@@ -46,88 +41,87 @@ export function factoryData(onChange) {
 }
 
 // =====================================================================
-// SƠ ĐỒ NHÀ MÁY
-// readOnly: Trang xem (chỉ xem, tô đậm công đoạn / máy sản phẩm đang dùng)
+// SƠ ĐỒ NHÀ MÁY – các khâu nằm ngang (Trước in → In → …), công đoạn thả xuống ra danh sách máy,
+// bấm ⋮ ở máy để xem chi tiết. Chọn Hộp / Sách để tô đậm công đoạn và máy sản phẩm đó đi qua.
 // =====================================================================
-export function mountFactoryTree(el, { product, sub, go, readOnly = false }) {
-  let sel = sub || null;
-  let line = 'all';
-  const wrap = h('div', { class: `factory ${readOnly ? 'ro' : ''}` });
-  const treeBox = h('div', { class: 'f-tree2' });
-  const panel = h('aside', { class: 'f-panel' });
-  const bar = h('div', { class: 'toolbar' });
-  wrap.append(h('div', { class: 'f-left' }, bar, treeBox), panel);
-  el.append(wrap);
-  const room = db.room('factory-company', (m) => { if (m.t === 'sel') { others.set(m.uid, m); renderTree(); } });
+export function mountFactoryTree(el, { product, readOnly = false }) {
+  let sel = null;
+  let pick = readOnly ? product.id : null;
+  const open = new Set();
+  const bar = h('div', { class: 'fac-bar' });
+  const flow = h('div', { class: 'fac-flow' });
+  const panel = h('aside', { class: 'fac-panel' });
+  const main = h('div', { class: 'fac-main' }, flow, panel);
+  el.append(h('div', { class: `fac ${readOnly ? 'ro' : ''}` }, bar, main));
   const others = new Map();
-  const st = factoryData(() => { renderBar(); renderTree(); if (!panel.contains(document.activeElement)) renderPanel(); });
-  const mineIds = () => new Set(st.plans.find(p => p.product_id === product.id) ? Object.entries(st.plans.find(p => p.product_id === product.id).steps || {}).filter(([, x]) => x.on).map(([k]) => k) : []);
-  const myMachines = () => { const p = st.plans.find(x => x.product_id === product.id); const s = new Set(); Object.values(p?.steps || {}).forEach(x => x.on && (x.machines || []).forEach(m => s.add(m))); return s; };
+  const room = db.room('factory-company', (m) => { if (m.t === 'sel') { others.set(m.uid, m); renderFlow(); } });
+  let first = true;
+  const st = factoryData(() => {
+    if (first && pick && st.plans.length) { first = false; usedStages().forEach(id => open.add(id)); }
+    renderBar(); renderFlow(); if (!panel.contains(document.activeElement)) renderPanel();
+  });
+  const planOf = () => st.plans.find(p => p.product_id === pick);
+  const usedStages = () => new Set(Object.entries(planOf()?.steps || {}).filter(([, x]) => x.on).map(([k]) => k));
+  const usedMachines = () => { const s = new Set(); Object.values(planOf()?.steps || {}).forEach(x => x.on && (x.machines || []).forEach(m => s.add(m))); return s; };
 
   function renderBar() {
-    const chip = (k, label) => h('button', { class: `chip ${line === k ? 'on' : ''}`, onclick: () => { line = k; renderBar(); renderTree(); } }, label);
     fill(bar,
-      h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } }, h('span', { class: 'small muted', style: { fontWeight: 700 } }, 'Hiện:'),
-        chip('all', 'Toàn bộ công ty'), chip('hop', 'Quy trình Hộp'), chip('sach', 'Quy trình Sách'), readOnly ? chip('mine', `${product.name} đi qua`) : null),
+      store.products.map(p => h('button', { class: `chip ${pick === p.id ? 'on' : ''}`, onclick: () => {
+        pick = pick === p.id ? null : p.id;
+        if (pick) usedStages().forEach(id => open.add(id));
+        renderBar(); renderFlow();
+      } }, p.name)),
       h('div', { class: 'grow' }),
-      readOnly ? h('span', { class: 'small muted' }, 'Ô đậm = công đoạn / máy ', h('b', {}, product.name), ' dùng (theo mục 3)') : h('button', { class: 'btn btn-sm', onclick: () => addStage() }, '＋ Công đoạn'));
+      !readOnly ? h('button', { class: 'btn btn-sm', onclick: () => addStage() }, '＋ Công đoạn') : null);
   }
-  const visible = (s) => line === 'all' ? true : line === 'mine' ? mineIds().has(s.id) : (s.line === 'chung' || s.line === line);
 
-  function renderTree() {
-    const mine = mineIds(), myM = myMachines();
-    const phases = st.phases().map(ph => [ph, st.stages().filter(s => (s.phase || PHASES[0]) === ph && visible(s))]).filter(([, ss]) => ss.length || (!readOnly && line === 'all'));
-    let n = 0;
-    fill(treeBox,
-      h('div', { class: 'f-root2' }, h('span', { class: 'serif' }, 'Nhà máy in · Công ty giả định'), h('small', {}, 'Phương án nhà máy chung cho Hộp và Sách')),
-      phases.length ? phases.map(([ph, ss]) => h('section', { class: 'f-phase' },
-        h('div', { class: 'f-phead' }, h('b', { class: 'serif' }, ph), h('span', { class: 'small muted' }, `${ss.length} công đoạn`),
-          !readOnly ? h('button', { class: 'icon-btn', title: 'Thêm công đoạn vào khâu này', onclick: () => addStage(ph) }, '＋') : null),
-        h('div', { class: 'f-row' }, ss.map(s => {
-          const i = ++n;
-          const used = st.stageUsedBy(s.id);
-          return h('div', { class: `f-st ${readOnly && mine.has(s.id) ? 'mine' : ''} ${readOnly && !mine.has(s.id) ? 'dim' : ''}` },
-            h('div', { class: 'f-sn' }, h('span', { class: 'f-si' }, i), h('b', { class: 'grow' }, s.name),
-              !readOnly ? h('button', { class: 'icon-btn', title: 'Tuỳ chọn công đoạn', onclick: (e) => stageMenu(s, e.currentTarget) }, '⋯') : null),
-            h('div', { class: 'f-tags' }, h('span', { class: `ln ln-${s.line || 'chung'}` }, LINES[s.line || 'chung']),
-              s.tag && EFFECTS.some(e => e.tag === s.tag) ? h('span', { class: 'ln fx', title: 'Tự chọn khi tích hiệu ứng ở mục 3' }, 'theo hiệu ứng') : null,
-              used.map(p => h('span', { class: 'ln use', title: `${p.name} đi qua công đoạn này` }, '● ' + p.name))),
-            h('div', { class: 'f-kids' },
-              st.kids(s.id).map(nd => {
-                const m = st.machine(nd.machine_id);
+  function renderFlow() {
+    const uS = usedStages(), uM = usedMachines();
+    const phases = st.phases().map(ph => [ph, st.stages().filter(s => (s.phase || PHASES[0]) === ph)]).filter(([, ss]) => ss.length || !readOnly);
+    fill(flow, phases.map(([ph, ss], i) => [
+      i ? h('div', { class: 'fac-arr' }, '→') : null,
+      h('section', { class: `fac-ph ${pick && ss.some(s => uS.has(s.id)) ? 'on' : ''}` },
+        h('div', { class: 'fac-phh' }, h('b', {}, ph), !readOnly ? h('button', { class: 'icon-btn', title: 'Thêm công đoạn', onclick: () => addStage(ph) }, '＋') : null),
+        ss.map(s => {
+          const isOpen = open.has(s.id), kids = st.kids(s.id);
+          const on = pick && uS.has(s.id);
+          return h('div', { class: `fac-st ${on ? 'on' : ''} ${pick && !on ? 'dim' : ''} ${isOpen ? 'open' : ''}` },
+            h('div', { class: 'fac-sh' },
+              h('button', { class: 'fac-tg', onclick: () => { isOpen ? open.delete(s.id) : open.add(s.id); renderFlow(); } },
+                h('span', { class: 'car' }, isOpen ? '▾' : '▸'), h('span', { class: 'nm' }, s.name), kids.length ? h('span', { class: 'ct' }, kids.length) : null),
+              !readOnly ? h('button', { class: 'icon-btn kebab', title: 'Tuỳ chọn công đoạn', onclick: (e) => stageMenu(s, e.currentTarget) }, '⋮') : null),
+            isOpen ? h('div', { class: 'fac-ms' },
+              kids.map(nd => {
                 const who = [...others.values()].filter(o => o.nodeId === nd.id && Date.now() - o.at < 60000);
-                return h('button', { class: `f-mc ${sel === nd.id ? 'sel' : ''} ${nd.machine_id ? '' : 'nolink'} ${readOnly && myM.has(nd.machine_id) ? 'mine' : ''}`, onclick: () => select(nd.id) },
-                  h('b', {}, nd.name), h('span', {}, brief(m)),
-                  who.length ? h('span', { class: 'f-who' }, who.map(o => avatar({ display_name: o.name, color: o.color }, 16))) : null);
+                return h('div', { class: `fac-m ${sel === nd.id ? 'sel' : ''} ${pick && uM.has(nd.machine_id) ? 'on' : ''}` },
+                  h('span', { class: 'nm', onclick: () => select(nd.id) }, nd.name),
+                  who.length ? h('span', { class: 'f-who' }, who.map(o => avatar({ display_name: o.name, color: o.color }, 16))) : null,
+                  h('button', { class: 'icon-btn kebab', title: 'Xem chi tiết', onclick: () => select(nd.id) }, '⋮'));
               }),
-              !st.kids(s.id).length ? h('div', { class: 'f-none' }, 'Chưa có máy trong CSDL') : null,
-              !readOnly ? h('button', { class: 'f-mc add', onclick: () => addMachine(s) }, '＋ Thêm máy') : null));
-        })))) : h('div', { class: 'empty', style: { marginTop: '18px' } }, line === 'mine' ? `Chưa chọn công đoạn nào cho ${product.name}. Vào Cơ sở dữ liệu › 3. Phương án sản xuất để tích quy trình.` : 'Chưa có công đoạn.'));
+              !readOnly ? h('button', { class: 'fac-add', onclick: () => addMachine(s) }, '＋ Thêm máy') : null) : null);
+        }))]));
   }
 
   function select(id) {
-    sel = id; go?.(id); renderTree(); renderPanel();
-    room.send({ t: 'sel', uid: store.user.id, name: store.me?.display_name, color: store.me?.color, nodeId: id, at: Date.now() });
+    sel = sel === id ? null : id; renderFlow(); renderPanel();
+    if (sel) room.send({ t: 'sel', uid: store.user.id, name: store.me?.display_name, color: store.me?.color, nodeId: id, at: Date.now() });
   }
 
   function renderPanel() {
     const node = st.nodes.find(n => n.id === sel);
+    main.classList.toggle('with-panel', !!node);
+    if (!node) { fill(panel); return; }
     const cols = machineCols();
-    if (!node) {
-      fill(panel, h('div', { class: 'f-ph serif' }, 'Dữ liệu máy'),
-        h('p', { class: 'small muted' }, readOnly ? 'Bấm một máy để xem thông số.' : 'Bấm một máy để điền thông số. Máy dùng chung cho cả 2 sản phẩm – sửa ở đây là cập nhật mọi nơi dùng máy đó.'),
-        h('div', { class: 'f-sum' }, h('div', {}, h('b', {}, st.stages().length), h('span', {}, 'công đoạn')), h('div', {}, h('b', {}, st.nodes.filter(n => n.kind === 'machine').length), h('span', {}, 'máy trên sơ đồ')), h('div', {}, h('b', {}, cols.length), h('span', {}, 'thông số / máy'))));
-      return;
-    }
     const m = st.machine(node.machine_id);
     const stage = st.nodes.find(n => n.id === node.parent_id);
-    const head = h('div', { class: 'f-ph' }, h('span', { class: 'muted small' }, `${stage?.phase || ''} › ${stage?.name || ''}`), h('div', { class: 'row' }, h('b', { class: 'serif grow', style: { fontSize: '18px' } }, node.name),
+    const head = h('div', { class: 'fac-ph2' },
+      h('div', { class: 'grow' }, h('small', {}, stage?.name || ''), h('b', { class: 'serif' }, node.name)),
       !readOnly ? h('button', { class: 'icon-btn', title: 'Tuỳ chọn', onclick: (e) => popMenu(e.currentTarget, [
         { icon: '⬆️', label: 'Lên trên', run: () => moveNode(node, -1) }, { icon: '⬇️', label: 'Xuống dưới', run: () => moveNode(node, 1) },
-        { icon: '🔁', label: 'Liên kết máy khác trong danh mục', run: () => relink(node) },
-        '-', { icon: '✕', label: 'Gỡ khỏi công đoạn', danger: true, run: async () => { if (await confirmBox('Gỡ máy?', `Gỡ “${node.name}” khỏi công đoạn ${stage?.name}? Dữ liệu máy trong bảng thiết bị vẫn giữ.`)) { await db.remove('factory_nodes', node.id).catch(toastErr); sel = null; go?.(null); renderPanel(); } } }]) }, '⋯') : null));
-    if (!m) { fill(panel, head, h('p', { class: 'small muted' }, 'Máy này chưa liên kết với dữ liệu máy.'), !readOnly ? h('button', { class: 'btn btn-sm btn-block', onclick: () => relink(node) }, 'Liên kết / tạo dữ liệu máy') : null); return; }
-    const used = st.usedBy(m.id);
+        { icon: '🔁', label: 'Liên kết máy khác', run: () => relink(node) },
+        '-', { icon: '✕', label: 'Gỡ khỏi công đoạn', danger: true, run: async () => { if (await confirmBox('Gỡ máy?', `Gỡ “${node.name}” khỏi ${stage?.name}?`)) { await db.remove('factory_nodes', node.id).catch(toastErr); sel = null; renderPanel(); } } }]) }, '⋯') : null,
+      h('button', { class: 'icon-btn', title: 'Đóng', onclick: () => select(node.id) }, '✕'));
+    if (!m) { fill(panel, head, !readOnly ? h('button', { class: 'btn btn-sm btn-block', onclick: () => relink(node) }, 'Liên kết dữ liệu máy') : null); return; }
     const save = async (c, raw) => {
       let v = raw; if (c.type === 'number') v = parseNum(raw) ?? (String(raw).trim() ? raw : '');
       if (String(v) === String(m.cells?.[c.key] ?? '')) return;
@@ -135,7 +129,6 @@ export function mountFactoryTree(el, { product, sub, go, readOnly = false }) {
       try { await db.update('machines', m.id, { cells, updated_by: store.user.id, updated_at: new Date().toISOString() }); logActivity(store.user, `sửa ${c.label.toLowerCase()} của`, `${m.name} → ${show(c, v)}`); } catch (e) { toastErr(e); }
     };
     fill(panel, head,
-      h('div', { class: 'small', style: { margin: '-4px 0 10px' } }, 'Đang dùng: ', used.length ? used.map(p => h('span', { class: 'ln use' }, p.name)) : h('span', { class: 'muted' }, 'chưa sản phẩm nào chọn')),
       h('div', { class: 'f-fields' }, cols.map(c => {
         const v = m.cells?.[c.key];
         if (readOnly) return h('div', { class: 'field ro' }, h('span', {}, c.label), h('div', { class: `ro-v ${c.type === 'number' ? 'num' : ''}` }, show(c, v) || '—'));
@@ -149,8 +142,7 @@ export function mountFactoryTree(el, { product, sub, go, readOnly = false }) {
         }
         return h('label', { class: 'field' }, h('span', {}, c.label), input);
       })),
-      !readOnly ? h('button', { class: 'btn btn-sm btn-block', onclick: () => addParam() }, '＋ Thêm thông số cho tất cả máy') : null,
-      h('p', { class: 'small muted' }, `Cập nhật ${m.updated_at ? new Date(m.updated_at).toLocaleString('vi-VN') : ''}`));
+      !readOnly ? h('button', { class: 'btn btn-sm btn-block', onclick: () => addParam() }, '＋ Thêm thông số') : null);
   }
 
   // ---------- thao tác ----------
@@ -169,7 +161,7 @@ export function mountFactoryTree(el, { product, sub, go, readOnly = false }) {
     const i = same.findIndex(x => x.id === s.id);
     popMenu(anchor, [
       { icon: '✏️', label: 'Đổi tên', run: async () => { const n = await prompt('Đổi tên công đoạn', 'Tên', s.name); if (n) db.update('factory_nodes', s.id, { name: n }).catch(toastErr); } },
-      { icon: '🏷️', label: `Dòng sản phẩm: ${LINES[s.line || 'chung']} → đổi`, run: async () => {
+      { icon: '🏷️', label: `Dùng cho: ${LINES[s.line || 'chung']}`, run: async () => {
         const sel2 = h('select', { class: 'select' }, Object.entries(LINES).map(([k, v]) => h('option', { value: k, selected: (s.line || 'chung') === k }, v)));
         if (await modal('Công đoạn dùng cho', sel2, [{ label: 'Huỷ', value: null }, { label: 'Lưu', value: 'ok', primary: true }]) === 'ok') db.update('factory_nodes', s.id, { line: sel2.value }).catch(toastErr);
       } },
@@ -206,7 +198,7 @@ export function mountFactoryTree(el, { product, sub, go, readOnly = false }) {
       const n = await db.insert('factory_nodes', { product_id: null, parent_id: s.id, kind: 'machine', name: m.name, machine_id: m.id, position: st.kids(s.id).length, updated_by: store.user.id });
       logActivity(store.user, `thêm máy vào ${s.name}:`, m.name);
       if (!st.nodes.some(x => x.id === n.id)) st.nodes.push(n);
-      select(n.id);
+      open.add(s.id); sel = null; select(n.id);
     } catch (e) { toastErr(e); }
   }
   async function relink(node) { try { const m = await pickMachine('Liên kết dữ liệu máy'); if (m) await db.update('factory_nodes', node.id, { machine_id: m.id, name: m.name }); } catch (e) { toastErr(e); } }
@@ -252,7 +244,6 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
     fill(tools,
       h('input', { class: 'input', style: { width: '220px' }, placeholder: 'Lọc theo tên máy / công đoạn…', value: filter, oninput: (e) => { filter = e.target.value.toLowerCase(); render(); e.target.focus(); e.target.setSelectionRange(e.target.value.length, e.target.value.length); } }),
       h('div', { class: 'seg' }, h('button', { class: !byCol ? 'on' : '', onclick: () => { byCol = false; render(); } }, '☰ Máy theo hàng'), h('button', { class: byCol ? 'on' : '', onclick: () => { byCol = true; render(); } }, '▥ Máy theo cột')),
-      h('span', { class: 'small muted' }, `${st.machines.length} máy · ${cols.length} thông số`),
       h('div', { class: 'grow' }),
       !readOnly ? h('button', { class: 'btn btn-sm', onclick: addRow }, '＋ Máy') : null,
       !readOnly ? h('button', { class: 'btn btn-sm', onclick: addParam }, '＋ Thông số') : null);
@@ -281,7 +272,7 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
     return d;
   }
   function cell(m, c, extra) {
-    if (c.key === '_stage') return h('td', { class: 'muted' }, h('div', { class: 'cell small' }, stageOf(m.id) || '—'));
+    if (c.key === '_stage') return h('td', { class: 'calc lock' }, h('div', { class: 'cell small' }, stageOf(m.id) || '—'));
     const v = c.key === '_name' ? m.name : m.cells?.[c.key];
     const td = h('td', { class: c.type === 'number' ? 'num' : '' });
     if (readOnly) { td.append(h('div', { class: 'cell' }, c.key === '_name' ? h('b', {}, v) : show(c, v), extra)); return td; }
@@ -306,7 +297,7 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
   async function addRow() {
     const name = await prompt('Máy mới', 'Tên máy', '', 'VD: Máy dập nổi DN1');
     if (!name) return;
-    try { const m = await db.insert('machines', { name, cells: { nguon: 'Giả định' }, position: st.machines.length, updated_by: store.user.id }); if (!st.machines.some(x => x.id === m.id)) st.machines.push(m); render(); logActivity(store.user, 'thêm máy vào bảng thiết bị', name); toast('Đã thêm máy. Gắn máy vào công đoạn ở tab “Sơ đồ nhà máy”.', 'ok'); } catch (e) { toastErr(e); }
+    try { const m = await db.insert('machines', { name, cells: { nguon: 'Giả định' }, position: st.machines.length, updated_by: store.user.id }); if (!st.machines.some(x => x.id === m.id)) st.machines.push(m); render(); logActivity(store.user, 'thêm máy vào bảng thiết bị', name); toast('Đã thêm máy', 'ok'); } catch (e) { toastErr(e); }
   }
   async function delParam(c) { if (await confirmBox('Xoá thông số?', `Xoá thông số “${c.label}” khỏi bảng thiết bị?`)) await saveMachineCols(machineCols().filter(x => x.key !== c.key)); }
   async function del(m) {

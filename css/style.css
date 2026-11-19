@@ -580,3 +580,52 @@ table.grid th.idx { z-index: 3; }
 .dr-mobile { display: none; }
 .dr-item.on { background: #ead9b8; outline: 1.5px dashed var(--ink); }
 @media (max-width: 1000px) { .dr-mobile { display: block; } .page-head .page-title { flex-wrap: wrap; } .dt-body .factory, .v-tree .factory { height: auto; } }
+
+/* ---------- sơ đồ nhà máy: khâu nằm ngang, công đoạn thả xuống ---------- */
+.fac { display: grid; gap: 12px; }
+.fac-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fac-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.fac-main.with-panel { grid-template-columns: minmax(0, 1fr) 300px; }
+.fac-main:not(.with-panel) .fac-panel { display: none; }
+.fac-flow { display: flex; align-items: flex-start; overflow-x: auto; padding-bottom: 6px; }
+.fac-arr { flex: none; margin-top: 9px; padding: 0 6px; color: var(--rd); font-weight: 800; font-size: 18px; }
+.fac-ph { flex: 1 0 185px; max-width: 280px; background: var(--paper); border: 1.5px solid var(--line); border-radius: 6px; overflow: hidden; }
+.fac-ph.on { border-color: var(--ink); }
+.fac-phh { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--ink); color: var(--cream); padding: 9px 12px; font-size: 14px; }
+.fac-phh .icon-btn { color: var(--cream); }
+.fac-st { border-top: 1px dashed var(--line); }
+.fac-st:first-of-type { border-top: 0; }
+.fac-st.on { background: #fff4e0; box-shadow: inset 4px 0 0 var(--rd); }
+.fac-sh { display: flex; align-items: center; padding-right: 4px; }
+.fac-tg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 8px 6px 8px 10px; text-align: left; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); }
+.fac-tg .car { width: 10px; flex: none; color: var(--muted); font-size: 11px; }
+.fac-tg .nm { flex: 1; }
+.fac-tg .ct { flex: none; font-size: 11px; background: #e3d3b4; border-radius: 99px; padding: 0 7px; color: var(--ink-2); font-weight: 700; }
+.fac-st.on .fac-tg { font-weight: 800; }
+.fac-st.dim .fac-tg { color: #9a8a73; font-weight: 500; }
+.icon-btn.kebab { font-weight: 900; font-size: 16px; padding: 0 6px; line-height: 1; }
+.fac-ms { padding: 0 4px 8px 24px; display: grid; gap: 2px; }
+.fac-m { display: flex; align-items: center; gap: 4px; padding: 2px 2px 2px 8px; border-radius: 4px; font-size: 13px; }
+.fac-m .nm { flex: 1; cursor: pointer; }
+.fac-m:hover { background: rgba(198, 156, 109, .2); }
+.fac-m.on { font-weight: 800; background: var(--ink); color: var(--cream); }
+.fac-m.on .icon-btn { color: var(--cream); }
+.fac-m.sel { outline: 2px solid var(--gr); }
+.fac-add { background: none; border: 1px dashed var(--line); border-radius: 4px; padding: 3px 8px; font-size: 12px; color: var(--muted); cursor: pointer; margin-top: 4px; text-align: left; }
+.fac-panel { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 6px; padding: 12px 14px; position: sticky; top: 0; max-height: calc(100vh - 200px); overflow: auto; }
+.fac-ph2 { display: flex; align-items: flex-start; gap: 4px; margin-bottom: 10px; }
+.fac-ph2 small { display: block; color: var(--muted); font-size: 11.5px; }
+.fac-ph2 b { font-size: 18px; }
+.v-tree { padding: 14px; overflow: visible; }
+
+/* ---------- ô nhập trắng, ô tự tính chìm xuống ---------- */
+table.grid tbody td:not(.idx):not(.rowhead) { background: #fff; }
+table.grid tbody td.lock, table.grid tbody td.calc { background: #e7dcc8 !important; box-shadow: inset 1px 1px 4px rgba(59, 42, 26, .22); }
+table.grid td.lock .cell, table.grid td.calc .cell { color: #5e4d3a; cursor: default; user-select: none; }
+table.grid td.err .cell { color: var(--rd); }
+table.grid th.fx { background: #dccbab; }
+@media (max-width: 1000px) { .fac-main.with-panel { grid-template-columns: 1fr; } .fac-panel { position: static; max-height: none; } }
+/* bảng chi tiết máy nổi bên phải, không chiếm chỗ sơ đồ */
+.fac-main, .fac-main.with-panel { grid-template-columns: minmax(0, 1fr); position: relative; }
+.fac-panel { position: absolute; top: 0; right: 0; width: 310px; z-index: 5; box-shadow: -8px 8px 24px rgba(59, 42, 26, .28); max-height: calc(100vh - 230px); }
+@media (max-width: 1000px) { .fac-panel { position: fixed; top: 70px; right: 8px; left: 8px; width: auto; max-height: calc(100vh - 90px); } }

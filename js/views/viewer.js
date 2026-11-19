@@ -57,18 +57,18 @@ export function mountSectionView(el, { product, section }) {
   const folder = folderFor(product.id, section);
   const offs = [];
   const sheetsBox = h('div', { class: 'v-sheets' });
-  const empty = (msg) => h('div', { class: 'empty' }, h('p', {}, msg || 'Chưa có dữ liệu.'), h('a', { class: 'btn btn-sm', href: `#/db/${product.id}/${section}` }, '🗄 Nhập ở Cơ sở dữ liệu'));
+  const empty = () => h('div', { class: 'empty' }, h('p', {}, 'Chưa có dữ liệu.'));
   const sheetCards = (sheets, opts = {}) => sheets.length ? sheets.filter(x => !opts.skip?.(x)).map(({ table, rows }) => h('div', { class: 'card v-card' },
-    h('div', { class: 'v-ch' }, h('h3', { class: 'serif' }, table.name), h('span', { class: 'small muted' }, `${rows.length} dòng`), h('div', { class: 'grow' }), h('a', { class: 'small', href: `#/db/${product.id}/${section}/${table.id}` }, '✎ Sửa')),
-    rows.length ? renderStatic(table, rows, opts.static?.(table)) : h('p', { class: 'small muted' }, 'Bảng chưa có dòng nào.'))) : [empty()];
+    h('div', { class: 'v-ch' }, h('h3', { class: 'serif' }, table.name)),
+    rows.length ? renderStatic(table, rows, opts.static?.(table)) : h('span', { class: 'muted' }, '—'))) : [empty()];
 
   if (section === 'factory') {
     const treeBox = h('div', { class: 'card v-tree' });
     const mBox = h('details', { class: 'card v-card v-det' }, h('summary', { class: 'serif' }, 'Bảng thiết bị (CSDL máy)'));
-    page.append(h('p', { class: 'muted', style: { marginTop: 0 } }, 'Phương án nhà máy là ', h('b', {}, 'chung của công ty'), ` cho cả Hộp và Sách. Ô đậm là công đoạn / máy ${product.name} đi qua (chọn ở mục 3).`), treeBox, mBox, sheetsBox);
+    page.append(treeBox, mBox, sheetsBox);
     offs.push(mountFactoryTree(treeBox, { product, readOnly: true }));
     offs.push(mountMachineTable(mBox, { readOnly: true }));
-    offs.push(watchSheets(folder.id, (sheets) => fill(sheetsBox, h('h3', { class: 'serif v-h' }, 'Cơ sở dữ liệu doanh nghiệp'), sheets.map(({ table, rows }) => h('details', { class: 'card v-card v-det' }, h('summary', { class: 'serif' }, table.name, h('span', { class: 'small muted' }, ` · ${rows.length} dòng`)), renderStatic(table, rows))))));
+    offs.push(watchSheets(folder.id, (sheets) => fill(sheetsBox, h('h3', { class: 'serif v-h' }, 'Cơ sở dữ liệu doanh nghiệp'), sheets.map(({ table, rows }) => h('details', { class: 'card v-card v-det' }, h('summary', { class: 'serif' }, table.name), renderStatic(table, rows))))));
   } else if (section === 'specs') {
     const head = h('div');
     const render = () => { const p = productOf(product.id) || product; fill(head, h('div', { class: 'v-spec' }, h('div', { class: 'v-img' }, productThumb(p, true)), h('div', {}, h('div', { class: 'stamp small-stamp' }, p.kind === 'sach' ? 'ĐƠN HÀNG 2' : 'ĐƠN HÀNG 1'), h('h2', { class: 'serif' }, p.name), h('p', { class: 'muted' }, p.subtitle), h('div', { class: 'meta' }, p.qty ? h('span', {}, p.qty) : null, p.due ? h('span', {}, p.due) : null)))); };
@@ -110,13 +110,13 @@ function costSummary(f, product) {
   const total = parts.reduce((s, k) => s + (v(k) || 0), 0);
   return h('div', {},
     h('div', { class: 'kpis big' },
-      h('div', { class: 'kpi hl' }, h('span', {}, 'Giá bán / 1 sản phẩm'), h('b', { class: 'serif' }, money(v('GBSP'))), h('small', {}, `Lợi nhuận mong muốn ${f.LN?.tyle ?? '?'} %`)),
+      h('div', { class: 'kpi hl' }, h('span', {}, 'Giá bán / 1 sản phẩm'), h('b', { class: 'serif' }, money(v('GBSP'))), h('small', {}, `Lợi nhuận ${f.LN?.tyle ?? '?'} %`)),
       h('div', { class: 'kpi' }, h('span', {}, 'Giá thành / 1 sản phẩm'), h('b', { class: 'serif' }, money(v('GTSP')))),
       h('div', { class: 'kpi' }, h('span', {}, 'Giá thành toàn bộ'), h('b', { class: 'serif' }, money(v('GTTB'))), h('small', {}, `${fmtNumber(v('SL') || 0, 'int')} sản phẩm`)),
       h('div', { class: 'kpi' }, h('span', {}, 'Giá bán đơn hàng'), h('b', { class: 'serif' }, money(v('GB'))), h('small', {}, `Lợi nhuận ${money(v('LN'))}`))),
     total ? h('div', { class: 'card card-pad v-card' }, h('h3', { class: 'serif' }, 'Cơ cấu giá thành toàn bộ'),
       h('div', { class: 'bars' }, parts.map(k => { const x = v(k) || 0; const pct = total ? x / total * 100 : 0; return h('div', { class: 'bar-row' }, h('span', { class: 'bl' }, f[k].label), h('div', { class: 'bt' }, h('i', { style: { width: Math.max(pct, .5) + '%' } })), h('span', { class: 'bv' }, `${fmtNumber(pct, 'dec2')} %`), h('span', { class: 'bm' }, money(x))); }))) : null,
-    !v('NVLC') ? h('p', { class: 'small muted' }, 'Các khoản NVL chính, năng lượng, lương, khấu hao đang trống – nhập ở Cơ sở dữ liệu.') : null);
+    null);
 }
 
 // ---------- 8. Kế hoạch ----------

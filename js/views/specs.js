@@ -28,14 +28,14 @@ export function mountSpecs(el, { product, folder }) {
   function renderImg() {
     const p = cur();
     const drop = h('div', { class: 'spec-drop' }, productThumb(p, true),
-      p.image_path ? null : h('div', { class: 'spec-hint' }, h('b', {}, 'Chưa có ảnh sản phẩm'), h('span', {}, 'Kéo thả ảnh vào đây hoặc bấm “Tải ảnh lên”. Ảnh sẽ hiện ở trang chọn sản phẩm và trang Tổng quan.')));
+      p.image_path ? null : h('div', { class: 'spec-hint' }, h('b', {}, 'Chưa có ảnh sản phẩm'), h('span', {}, 'Kéo thả ảnh vào đây')));
     ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
     ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drag'); }));
     drop.addEventListener('drop', (e) => { const f = [...(e.dataTransfer?.files || [])].find(x => x.type.startsWith('image/')); if (f) upload(f); });
     fill(imgBox, drop, h('div', { class: 'row', style: { padding: '12px 14px', borderTop: '1.5px dashed var(--line)' } },
       h('button', { class: 'btn btn-sm btn-primary', onclick: () => input.click() }, p.image_path ? '↻ Đổi ảnh' : '⬆ Tải ảnh lên'),
       p.image_path ? h('button', { class: 'btn btn-sm', onclick: removeImg }, 'Gỡ ảnh') : null,
-      h('div', { class: 'grow' }), h('span', { class: 'small muted' }, 'JPG/PNG · tự thu nhỏ')));
+      h('div', { class: 'grow' })));
   }
 
   function renderInfo() {
@@ -48,8 +48,7 @@ export function mountSpecs(el, { product, folder }) {
     fill(infoBox, h('h3', { class: 'serif' }, 'Thông tin chung'),
       field('name', 'Tên sản phẩm', 'VD: Hộp kem dưỡng'),
       field('subtitle', 'Mô tả ngắn', 'Kiểu dáng · kích thước · giấy · màu in'),
-      h('div', { class: 'row', style: { gap: '12px', alignItems: 'flex-start' } }, h('div', { class: 'grow' }, field('qty', 'Số lượng', '50.000 hộp')), h('div', { class: 'grow' }, field('due', 'Thời hạn', 'Giao 15 ngày'))),
-      h('p', { class: 'small muted' }, 'Bảng thông số chi tiết (cấu trúc, vật liệu, màu in, gia công bề mặt) là các tab bảng bên cạnh. Bản vẽ khai triển, ảnh tham khảo: tải lên ở ', h('a', { href: `#/p/${p.id}/specs/files` }, 'Trang xem › Tệp đính kèm'), '.'));
+      h('div', { class: 'row', style: { gap: '12px', alignItems: 'flex-start' } }, h('div', { class: 'grow' }, field('qty', 'Số lượng', '50.000 hộp')), h('div', { class: 'grow' }, field('due', 'Thời hạn', 'Giao 15 ngày'))));
   }
 
   async function upload(file) {

@@ -30,19 +30,19 @@ export function mountPlan(el, { product, readOnly = false }) {
   const pending = {};
   const change = (patch, msg) => { Object.assign(plan, patch); Object.assign(pending, patch); persist({ ...pending }); render(); if (msg) logActivity(store.user, msg, product.name); };
 
-  function branch(n, title, sub, body) {
-    return h('section', { class: 'p-branch' }, h('div', { class: 'p-bh' }, h('span', { class: 'p-bn' }, n), h('div', {}, h('b', { class: 'serif' }, title), sub ? h('small', {}, sub) : null)), h('div', { class: 'p-bb' }, body));
+  function branch(n, title, body) {
+    return h('section', { class: 'p-branch' }, h('div', { class: 'p-bh' }, h('span', { class: 'p-bn' }, n), h('b', { class: 'serif' }, title)), h('div', { class: 'p-bb' }, body));
   }
 
   function render() {
     if (!plan) return;
     fill(page,
-      h('div', { class: 'p-root' }, h('span', { class: 'serif' }, `Phương án sản xuất · ${product.name}`), h('small', {}, readOnly ? 'Trang xem – sửa trong Cơ sở dữ liệu' : 'Chọn hiệu ứng → công đoạn gia công sau in được tích tự động')),
+      h('div', { class: 'p-root' }, h('span', { class: 'serif' }, product.name)),
       h('div', { class: 'p-tree' },
-        branch('①', 'Hiệu ứng – gia công bề mặt', product.kind === 'sach' ? 'Áp dụng cho bìa sách' : 'Từ đó chọn quy trình gia công sau in', boxes.fx),
-        branch('②', 'Công nghệ in', 'Phương pháp, số màu, cách in, máy in cho từng thành phần', boxes.print),
-        branch('③', 'Quy trình sản xuất', `Quy trình chung của công ty cho dòng ${LINES[product.kind]} – tích công đoạn sản phẩm đi qua và chọn máy`, boxes.flow),
-        branch('④', 'Bình trang & khuôn', 'Khổ giấy, layout tờ in, số con / tờ, khuôn GCBM, khuôn bế', boxes.layout)));
+        branch('①', product.kind === 'sach' ? 'Hiệu ứng (bìa)' : 'Hiệu ứng', boxes.fx),
+        branch('②', 'Công nghệ in', boxes.print),
+        branch('③', 'Quy trình sản xuất', boxes.flow),
+        branch('④', 'Bình trang & khuôn', boxes.layout)));
     renderFx(); renderPrint(); renderFlow(); renderLayout();
   }
 
@@ -50,13 +50,11 @@ export function mountPlan(el, { product, readOnly = false }) {
   function renderFx() {
     const list = EFFECTS.filter(e => !e.line || e.line === product.kind);
     const on = new Set(plan.effects || []);
-    const auto = stagesFor().filter(s => EFFECT_TAGS.has(s.tag) && stepOf(s.id).on);
     fill(boxes.fx,
       h('div', { class: 'fx-chips' }, list.map(e => readOnly
         ? (on.has(e.key) ? h('span', { class: 'chip on' }, '✓ ', e.label) : null)
         : h('button', { class: `chip ${on.has(e.key) ? 'on' : ''}`, onclick: () => toggleEffect(e.key) }, on.has(e.key) ? '✓ ' : '＋ ', e.label))),
-      readOnly && !on.size ? h('p', { class: 'small muted' }, 'Không có hiệu ứng.') : null,
-      h('p', { class: 'small muted', style: { margin: '8px 0 0' } }, '→ Công đoạn gia công sau in: ', auto.length ? auto.map(s => h('span', { class: 'ln use' }, s.name)) : 'chưa có'));
+      readOnly && !on.size ? h('span', { class: 'muted' }, '—') : null);
   }
   function toggleEffect(key) {
     const effects = new Set(plan.effects || []);
@@ -107,10 +105,8 @@ export function mountPlan(el, { product, readOnly = false }) {
     const ss = stagesFor();
     const onList = ss.filter(s => stepOf(s.id).on);
     const phases = [...PHASES, ...new Set(ss.map(s => s.phase).filter(p => !PHASES.includes(p)))];
+    void onList;
     fill(boxes.flow,
-      h('div', { class: 'flow-sum' }, h('b', {}, `${product.name} đi qua ${onList.length}/${ss.length} công đoạn: `),
-        onList.length ? onList.map((s, i) => [i ? h('span', { class: 'arr' }, '→') : null, h('span', { class: 'fs' }, s.name, stepOf(s.id).machines?.length ? h('small', {}, ' (' + stepOf(s.id).machines.map(id => st.machine(id)?.name).filter(Boolean).join(', ') + ')') : null)]) : h('span', { class: 'muted' }, 'chưa chọn')),
-      readOnly ? null : h('p', { class: 'small muted', style: { margin: '4px 0 10px' } }, 'Đây là quy trình chung của công ty (sửa ở mục 1). Tích ô để chọn công đoạn sản phẩm đi qua, bấm tên máy để chọn máy thực hiện.'),
       h('div', { class: 'flow' }, phases.map(ph => {
         const list = ss.filter(s => (s.phase || PHASES[0]) === ph);
         if (!list.length || (readOnly && !list.some(s => stepOf(s.id).on))) return null;
@@ -118,16 +114,15 @@ export function mountPlan(el, { product, readOnly = false }) {
           h('div', { class: 'fl-row' }, list.filter(s => !readOnly || stepOf(s.id).on).map(s => {
             const step = stepOf(s.id);
             const kids = st.kids(s.id);
-            const byFx = EFFECT_TAGS.has(s.tag);
             return h('div', { class: `fl-st ${step.on ? 'on' : ''}` },
               h('label', { class: 'fl-h' }, readOnly ? null : h('input', { type: 'checkbox', checked: step.on, onchange: (e) => setStep(s, { on: e.target.checked, machines: e.target.checked && !step.machines?.length ? kids.slice(0, 1).map(k => k.machine_id).filter(Boolean) : step.machines || [] }) }),
-                h('b', {}, s.name), s.line !== 'chung' ? h('span', { class: `ln ln-${s.line}` }, LINES[s.line]) : null, byFx ? h('span', { class: 'ln fx', title: 'Tự tích khi chọn hiệu ứng ở ①' }, 'hiệu ứng') : null),
+                h('b', {}, s.name)),
               h('div', { class: 'fl-ms' }, kids.length ? kids.map(k => {
                 const m = st.machine(k.machine_id); if (!m) return null;
                 const picked = (step.machines || []).includes(m.id);
                 if (readOnly) return picked ? h('span', { class: 'mchip on' }, m.name) : null;
                 return h('button', { class: `mchip ${picked ? 'on' : ''}`, disabled: !step.on, title: `${m.cells?.ns || '?'} ${m.cells?.dv || ''}`, onclick: () => setStep(s, { machines: picked ? step.machines.filter(x => x !== m.id) : [...(step.machines || []), m.id] }) }, m.name);
-              }) : h('span', { class: 'small muted' }, 'Chưa có máy (thêm ở mục 1)')));
+              }) : null));
           })));
       })));
   }
@@ -142,7 +137,7 @@ export function mountPlan(el, { product, readOnly = false }) {
     if (!folder) { fill(boxes.layout, h('p', { class: 'small muted' }, 'Chưa có thư mục.')); return; }
     const tables = await db.select('data_tables', { eq: { folder_id: folder.id }, order: ['created_at', true] });
     const t = tables.find(x => /bình trang/i.test(x.name)) || tables[0];
-    if (!t) { fill(boxes.layout, h('p', { class: 'small muted' }, readOnly ? 'Chưa có bảng bình trang.' : 'Chưa có bảng. Tạo ở tab “Bảng khác” của mục này.')); return; }
+    if (!t) { fill(boxes.layout, h('span', { class: 'muted' }, '—')); return; }
     if (readOnly) { const rows = await db.select('data_rows', { eq: { table_id: t.id } }); fill(boxes.layout, renderStatic(t, rows)); return; }
     if (layoutTableId === t.id && boxes.layout.firstChild) return; // giữ nguyên bảng đang sửa
     sheetCleanup?.(); layoutTableId = t.id; fill(boxes.layout);

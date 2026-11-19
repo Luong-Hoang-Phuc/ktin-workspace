@@ -173,12 +173,12 @@ function renderSide() {
   const item = (s, mode) => {
     const on = r.view === (mode === 'db' ? 'db' : 'product') && r.section === s.key;
     return h('a', { class: `nav ${on ? 'on' : ''}`, href: mode === 'db' ? `#/db/${pid}/${s.key}` : `#/p/${pid}/${s.key}` },
-      h('span', { class: 'ni' }, s.n ? String(s.n) : '◎'), h('span', { class: 'nl' }, s.label), s.company ? h('span', { class: 'tagc', title: 'Chung cho cả Hộp và Sách' }, 'chung') : null,
+      h('span', { class: 'ni' }, s.n ? String(s.n) : '◎'), h('span', { class: 'nl' }, s.label),
       here(s.key, mode).length ? h('span', { class: 'here' }, here(s.key, mode).slice(0, 3).map(o => avatar({ display_name: o.name, color: o.color }, 18))) : null);
   };
   if (r.view === 'db') {
     fill(sideEl,
-      h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu'), h('small', {}, 'Nhập liệu như Excel – trang xem lấy số từ đây')),
+      h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu')),
       WORK_SECTIONS.map(s => item(s, 'db')),
       h('div', { class: 'side-head' }, 'Chuyển'),
       h('a', { class: 'nav', href: `#/p/${pid}/${r.section || 'overview'}` }, h('span', { class: 'ni' }, '👁'), h('span', { class: 'nl' }, 'Về trang xem')),
@@ -211,9 +211,9 @@ function openDrawer() {
       h('div', { class: 'dr-sec' }, 'Cơ sở dữ liệu (nhập liệu)'),
       WORK_SECTIONS.map(sec => item(sec.n, sec.label, () => go(`#/db/${store.productId}/${sec.key}`), { on: store.route.view === 'db' && store.route.section === sec.key }))) : null,
     h('div', { class: 'dr-sec' }, 'Dùng chung'),
-    item('🗄', 'Cơ sở dữ liệu', () => go(dbHref()), { sub: 'Nhập liệu 8 mục như Excel' }),
-    item('📁', 'Tài liệu', () => go('#/docs/lecturer'), { sub: 'Giảng viên · Nhóm' }),
-    item('✏️', 'Bảng trắng nhóm', () => go('#/board'), { sub: 'Phác thảo, brainstorm' }),
+    item('🗄', 'Cơ sở dữ liệu', () => go(dbHref())),
+    item('📁', 'Tài liệu', () => go('#/docs/lecturer')),
+    item('✏️', 'Bảng trắng nhóm', () => go('#/board')),
     item('✦', 'Canva – template thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn link' }),
     item('✎', 'Sửa link Canva', editCanva),
     h('div', { class: 'dr-sec' }, 'Tài khoản'),
@@ -339,7 +339,7 @@ async function renderProduct(sec) {
   const body = h('div', { class: 'tab-body' });
   const head = h('div', { class: 'page-head' },
     h('div', { class: 'crumbs' }, h('a', { href: `#/p/${p.id}/overview` }, p.name), h('span', {}, '›'), sec.company ? [h('span', {}, 'Công ty (chung)'), h('span', {}, '›')] : null, h('span', {}, secLabel(sec))),
-    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, sec.n), h('h1', { class: 'serif' }, sec.label), sec.company ? h('span', { class: 'tagc big' }, 'chung cho Hộp & Sách') : null,
+    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, sec.n), h('h1', { class: 'serif' }, sec.label),
       h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm btn-db', href: `#/db/${p.id}/${sec.key}` }, '🗄 Nhập liệu ở Cơ sở dữ liệu')),
     h('div', { class: 'tabs' }, VIEW_TABS.map(([t, label]) => h('a', { class: `tab ${t === tab ? 'on' : ''}`, href: `#/p/${p.id}/${sec.key}/${t}` }, label))));
   fill(mainEl, h('div', { class: 'page-full' }, head, body));
@@ -368,8 +368,7 @@ async function renderDb(sec) {
     specs: [{ key: 'info', label: '🖼 Ảnh & thông tin chung', mount: (el) => mountSpecs(el, { product: p, folder }) }],
     plan: [{ key: 'tree', label: '🌳 Phương án (dạng cây)', mount: (el) => mountPlan(el, { product: p }) }],
   }[sec.key] || [];
-  const intro = sec.company ? h('p', { class: 'small muted', style: { margin: '0 0 12px' } }, 'Dữ liệu ', h('b', {}, 'chung của công ty'), ' – Hộp và Sách dùng chung: sơ đồ nhà máy, thiết bị, giá vật tư, định mức bù hao, đơn giá lương, tham số chung (trích file CSDL của giảng viên).') : null;
-  cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [], intro });
+  cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [] });
 }
 
 function renderBoard() {

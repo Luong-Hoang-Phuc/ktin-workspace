@@ -75,11 +75,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   let cur = table || null, rows = [], comp = null, sel = null; // sel = { ri, key }
   const offs = [];
   const tools = h('div', { class: 'toolbar sheet-tools' });
-  const fbarAddr = h('b', { class: 'fb-addr' }, '');
-  const fbarIn = h('input', { class: 'fb-in', placeholder: 'Chọn một ô để xem / sửa nội dung, công thức…', spellcheck: false });
-  const fbar = h('div', { class: 'fbar' }, fbarAddr, h('span', { class: 'fb-fx' }, 'ƒx'), fbarIn);
   const gridBox = h('div');
-  el.append(h('div', { class: 'sheet' }, tools, fbar, gridBox));
+  el.append(h('div', { class: 'sheet' }, tools, gridBox));
   const room = db.room(`table-${tableId || table?.id}`, onRoom);
   const editing = new Map();
   const cols = () => cur?.columns || [];
@@ -89,8 +86,6 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   function renderTools() {
     if (!cur) { fill(tools); return; }
     fill(tools,
-      compact ? null : h('h3', { class: 'serif', style: { margin: 0, fontSize: '17px' } }, cur.name),
-      h('span', { class: 'small muted' }, `${rows.length} dòng · ${cols().length} cột`),
       h('div', { class: 'grow' }),
       h('button', { class: 'btn btn-sm', onclick: () => addRow(rows.length) }, '＋ Dòng'),
       h('button', { class: 'btn btn-sm', onclick: () => addColumn(cols().length) }, '＋ Cột'),
@@ -115,25 +110,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   function setSel(ri, key) {
     sel = ri == null ? null : { ri, key };
     gridBox.querySelectorAll('td.sel').forEach(td => td.classList.remove('sel'));
-    if (!sel) { fbarAddr.textContent = ''; fbarIn.value = ''; return; }
-    const ci = cols().findIndex(c => c.key === key), c = cols()[ci];
-    fbarAddr.textContent = c?.formula ? `${colLetter(ci)}:${colLetter(ci)}` : `${colLetter(ci)}${ri + 1}`;
-    fbarIn.value = rawOf(ri, key);
-    fbarIn.title = c?.formula ? 'Công thức áp dụng cho cả cột (@ = dòng hiện tại)' : '';
-    gridBox.querySelector(`tr[data-i="${ri}"] td[data-key="${key}"]`)?.classList.add('sel');
+    if (sel) gridBox.querySelector(`tr[data-i="${ri}"] td[data-key="${key}"]`)?.classList.add('sel');
   }
-  fbarIn.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { setSel(sel?.ri, sel?.key); fbarIn.blur(); }
-    if (e.key !== 'Enter' || !sel) return;
-    e.preventDefault();
-    const c = cols().find(x => x.key === sel.key); if (!c) return;
-    const text = fbarIn.value;
-    if (c.formula) {
-      if (!isFormula(text)) { toast('Cột công thức phải bắt đầu bằng dấu =', 'error'); return; }
-      saveColumns(cols().map(x => x.key === c.key ? { ...x, formula: toInternal(text, cols()) } : x));
-    } else saveCell(rows[sel.ri], c, parseInput(c, text));
-    fbarIn.blur();
-  });
 
   const parseInput = (c, text) => {
     const t = String(text ?? '').replace(/\n$/, '');
@@ -163,7 +141,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     fill(gridBox, h('div', { class: `grid-scroll ${compact ? 'compact' : ''}` }, table),
       h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } },
         h('button', { class: 'btn btn-sm', onclick: () => addRow(rows.length) }, '＋ Thêm dòng'),
-        h('span', { class: 'small muted' }, 'Gõ = để viết công thức (VD: =C3*D3, =SUM(G1:G9)) · Bấm số dòng để chèn / xoá dòng · Dán trực tiếp từ Excel · Thay đổi hiện ngay cho cả nhóm')));
+));
     if (sel) setSel(sel.ri, sel.key);
   }
 
@@ -176,10 +154,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     if (who) { td.classList.add('busy'); td.title = `${who} đang sửa`; }
     const set = (val) => saveCell(r, c, val);
     const focusSel = () => setSel(ri, c.key);
-    if (c.formula) {
-      td.append(h('div', { class: 'cell', tabindex: 0, onfocus: focusSel, onclick: focusSel, title: 'Ô tính tự động theo công thức của cột' }, fmtValue(computed, c)));
-      return td;
-    }
+    if (c.formula) { td.classList.add('lock'); td.append(h('div', { class: 'cell', title: toDisplay(c.formula, cols()) }, fmtValue(computed, c))); return td; }
     if (c.type === 'select' || c.type === 'person') {
       const opts = c.type === 'person' ? [...store.profiles.values()].map(p => [p.id, p.display_name || p.email]) : (c.options || []).map(o => [o, o]);
       td.append(h('select', { class: 'cell', onfocus: focusSel, onchange: (e) => set(e.target.value) }, h('option', { value: '' }, ''), opts.map(([val, label]) => h('option', { value: val, selected: v === val }, label)),
@@ -189,17 +164,19 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     if (c.type === 'date') { td.append(h('input', { class: 'cell', type: 'date', value: isFormula(v) ? '' : v, onfocus: focusSel, onchange: (e) => set(e.target.value) })); return td; }
     if (c.type === 'check') { td.append(h('div', { class: 'cell', style: { textAlign: 'center' } }, h('input', { type: 'checkbox', checked: !!v, onfocus: focusSel, onchange: (e) => set(e.target.checked) }))); return td; }
     const shown = fmtValue(computed, c);
-    const div = h('div', { class: 'cell', contenteditable: 'plaintext-only', spellcheck: false }, shown);
+    const locked = isFormula(v);
+    const div = h('div', { class: 'cell', contenteditable: locked ? 'false' : 'plaintext-only', spellcheck: false, title: locked ? toDisplay(v, cols()) + '  (bấm đúp để sửa)' : null }, shown);
+    if (locked) { td.classList.add('lock'); div.addEventListener('dblclick', () => { div.contentEditable = 'plaintext-only'; td.classList.remove('lock'); div.focus(); }); }
     div.addEventListener('focus', () => { div.textContent = rawOf(ri, c.key); focusSel(); room.send({ t: 'edit', k: `${r.id}:${c.key}`, name: store.me?.display_name }); });
-    div.addEventListener('input', () => { if (sel?.ri === ri && sel.key === c.key) fbarIn.value = div.textContent; });
     div.addEventListener('blur', () => {
       room.send({ t: 'done', k: `${r.id}:${c.key}` });
       const nv = parseInput(c, div.textContent);
+      if (isFormula(nv)) { div.contentEditable = 'false'; td.classList.add('lock'); div.title = toDisplay(nv, cols()); }
       if (String(nv) !== String(v)) set(nv); else div.textContent = shown;
     });
     div.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); div.blur(); focusCell(ri + 1, c.key); }
-      if (e.key === 'Tab') { e.preventDefault(); const cs = cols(); const ci = cs.findIndex(x => x.key === c.key); const nk = cs[ci + (e.shiftKey ? -1 : 1)]?.key; div.blur(); if (nk) focusCell(ri, nk); }
+      if (e.key === 'Tab') { e.preventDefault(); const cs = cols(); const d = e.shiftKey ? -1 : 1; let ci = cs.findIndex(x => x.key === c.key) + d; while (cs[ci]?.formula) ci += d; const nk = cs[ci]?.key; div.blur(); if (nk) focusCell(ri, nk); }
       if (e.key === 'Escape') { div.textContent = rawOf(ri, c.key); div.blur(); }
     });
     div.addEventListener('paste', (e) => { const t = e.clipboardData.getData('text'); if (t.includes('\t') || t.replace(/\r/g, '').split('\n').filter(Boolean).length > 1) { e.preventDefault(); pasteGrid(ri, c, t); } });
@@ -226,7 +203,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
         const v = comp.get(ri, c.key); const cell = td.querySelector('.cell'); if (!cell) return;
         const t = fmtValue(v, c); if (cell.textContent !== t) cell.textContent = t;
         td.classList.toggle('err', v instanceof FErr);
-        td.classList.toggle('calc', !!c.formula || isFormula(rows[ri]?.cells?.[c.key]));
+        const f = !!c.formula || isFormula(rows[ri]?.cells?.[c.key]);
+        td.classList.toggle('calc', f); td.classList.toggle('lock', f);
       });
     });
     gridBox.querySelectorAll('tfoot td[data-tot]').forEach(td => { const c = cs.find(x => x.key === td.getAttribute('data-tot')); const t = c ? comp.total(c.key) : null; td.firstChild.textContent = t == null ? '' : fmtValue(t, c); });
@@ -373,7 +351,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
         h('li', {}, h('code', {}, '=ROUNDUP(C7/C4,0)'), ' – làm tròn lên'), h('li', {}, h('code', {}, '=IF(C2>0,C2*2,"")'), ' – điều kiện'),
         h('li', {}, 'Cột công thức (ƒ): một công thức cho cả cột, ', h('code', {}, '@'), ' = dòng hiện tại, VD ', h('code', {}, '=D@*E@*(1+F@/100)'))),
       h('p', {}, 'Hàm có sẵn: SUM, AVERAGE, MIN, MAX, COUNT, ROUND, ROUNDUP, ROUNDDOWN, CEILING, FLOOR, INT, ABS, SQRT, POWER, MOD, IF, IFERROR, AND, OR, NOT.'),
-      h('p', {}, 'Chèn / xoá dòng bằng cách bấm số dòng – công thức tự dịch như Excel. Đổi thứ tự cột không làm hỏng công thức.')), [{ label: 'Đã hiểu', value: 1, primary: true }]);
+      h('p', {}, 'Ô trắng là ô nhập. Ô xám là ô tự tính – bấm đúp để sửa công thức của ô đó. Bấm số dòng để chèn / xoá dòng, công thức tự dịch như Excel.')), [{ label: 'Đã hiểu', value: 1, primary: true }]);
   }
 
   // ---------- realtime ----------

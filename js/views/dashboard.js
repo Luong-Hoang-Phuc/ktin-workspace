@@ -17,7 +17,6 @@ export function mountOverview(el, { product, folder }) {
   const teamBox = h('div', { class: 'card card-pad' });
   const feedBox = h('div', { class: 'card card-pad' });
   page.append(heroBox, figBox,
-    db.demo ? h('div', { class: 'demo-note', style: { marginTop: '14px' } }, h('b', {}, 'Bản xem thử. '), 'Các mục 1–8 bên trái là trang xem (hiển thị · tệp đính kèm · ghi chú). Nhập số liệu như Excel ở ', h('b', {}, '🗄 Cơ sở dữ liệu'), ' trên thanh trên cùng. Bấm “▶ Mô phỏng nhóm” để xem bạn cùng nhóm sửa dữ liệu theo thời gian thực. Đổi sản phẩm: nút ☰.') : null,
     h('div', { class: 'dash-grid' }, progBox, h('div', { style: { display: 'grid', gap: '16px', alignContent: 'start' } }, teamBox, feedBox)));
 
   function renderHero() {
@@ -27,11 +26,7 @@ export function mountOverview(el, { product, folder }) {
       h('div', { class: 'grow' },
         h('div', { class: 'stamp small-stamp' }, p.kind === 'sach' ? 'ĐƠN HÀNG 2' : 'ĐƠN HÀNG 1'),
         h('h1', { class: 'serif' }, p.name), h('p', {}, p.subtitle),
-        h('div', { class: 'meta' }, p.qty ? h('span', {}, p.qty) : null, p.due ? h('span', {}, p.due) : null)),
-      h('div', { class: 'hero-actions' },
-        h('a', { class: 'btn btn-sm btn-primary', href: `#/db/${p.id}/factory` }, '🗄 Mở Cơ sở dữ liệu'),
-        h('a', { class: 'btn btn-sm', href: `#/db/${p.id}/specs` }, p.image_path ? '✎ Sửa thông số & ảnh' : '⬆ Tải ảnh sản phẩm'),
-        h('a', { class: 'btn btn-sm', href: `#/p/${p.id}/plan` }, '③ Xem phương án sản xuất'))));
+        h('div', { class: 'meta' }, p.qty ? h('span', {}, p.qty) : null, p.due ? h('span', {}, p.due) : null))));
   }
 
   // ---------- tiến độ (để trống cho nhóm tự cập nhật) ----------
@@ -53,7 +48,6 @@ export function mountOverview(el, { product, folder }) {
     fill(progBox,
       h('div', { class: 'row', style: { marginBottom: '10px' } }, h('h3', { class: 'serif', style: { margin: 0 } }, 'Tiến độ đồ án'), h('div', { class: 'grow' }), h('span', { class: 'badge' }, `${done}/${rows.length} bước · ${pct}%`)),
       h('div', { class: 'bar big', style: { marginBottom: '12px' } }, h('i', { style: { width: pct + '%' } })),
-      rows.every(r => !r.cells.phutrach && r.cells.trangthai === 'Chưa làm') ? h('p', { class: 'small muted', style: { margin: '0 0 10px' } }, 'Chưa có tiến độ. Chọn người phụ trách và trạng thái cho từng bước khi nhóm bắt đầu làm.') : null,
       h('div', { class: 'steps' }, rows.map(r => {
         const c = r.cells || {};
         const sec = SECTIONS.find(s => s.n === Number(c.buoc));
@@ -97,10 +91,10 @@ export function mountOverview(el, { product, folder }) {
     const money = (x) => x?.value != null ? fmtNumber(x.value, 'vnd') : '—';
     const S = f.schedule; const ok = S && isFinite(S.start) && isFinite(S.end);
     fill(figBox,
-      h('a', { class: 'kpi hl', href: `#/p/${product.id}/cost` }, h('span', {}, 'Giá bán / 1 SP'), h('b', { class: 'serif' }, money(f.GBSP)), h('small', {}, f.LN?.tyle != null ? `Lợi nhuận ${f.LN.tyle} %` : 'mục 7')),
-      h('a', { class: 'kpi', href: `#/p/${product.id}/cost` }, h('span', {}, 'Giá thành / 1 SP'), h('b', { class: 'serif' }, money(f.GTSP)), h('small', {}, 'mục 7')),
-      h('a', { class: 'kpi', href: `#/p/${product.id}/time` }, h('span', {}, 'Σ Thời gian làm việc'), h('b', { class: 'serif' }, f.tlv != null ? fmtNumber(f.tlv, 'dec2') + ' h' : '—'), h('small', {}, 'mục 6')),
-      h('a', { class: 'kpi', href: `#/p/${product.id}/schedule` }, h('span', {}, 'Lịch sản xuất'), h('b', { class: 'serif' }, ok ? `${S.end - S.start + 1} ngày` : '—'), h('small', {}, ok ? `${fmtNumber(S.start, 'date')} → ${fmtNumber(S.end, 'date')}` : 'mục 8')));
+      h('a', { class: 'kpi hl', href: `#/p/${product.id}/cost` }, h('span', {}, 'Giá bán / 1 SP'), h('b', { class: 'serif' }, money(f.GBSP)), f.LN?.tyle != null ? h('small', {}, `Lợi nhuận ${f.LN.tyle} %`) : null),
+      h('a', { class: 'kpi', href: `#/p/${product.id}/cost` }, h('span', {}, 'Giá thành / 1 SP'), h('b', { class: 'serif' }, money(f.GTSP))),
+      h('a', { class: 'kpi', href: `#/p/${product.id}/time` }, h('span', {}, 'Σ Thời gian làm việc'), h('b', { class: 'serif' }, f.tlv != null ? fmtNumber(f.tlv, 'dec2') + ' h' : '—')),
+      h('a', { class: 'kpi', href: `#/p/${product.id}/schedule` }, h('span', {}, 'Lịch sản xuất'), h('b', { class: 'serif' }, ok ? `${S.end - S.start + 1} ngày` : '—'), ok ? h('small', {}, `${fmtNumber(S.start, 'date')} → ${fmtNumber(S.end, 'date')}`) : null));
   };
   for (const k of ['cost', 'time', 'schedule']) { const fo = sectionFolder(product.id, k); if (fo) offs.push(watchSheets(fo.id, (sh) => { figs[k] = readFigures(sh); renderFigs(); })); }
   renderFigs();
