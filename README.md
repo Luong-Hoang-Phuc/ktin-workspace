@@ -31,7 +31,7 @@ Công cụ web phục vụ **đồ án (tiểu luận) Kinh tế & Tổ chức s
 2. **SQL Editor → New query** → dán toàn bộ `supabase/setup.sql` → **Run**.
 3. **Authentication → Sign In / Providers**: tắt *Allow new users to sign up*.
 4. **Authentication → URL Configuration**:
-   - *Site URL*: `https://<tên-github>.github.io/ktin-workspace/`
+   - *Site URL*: `https://luong-hoang-phuc.github.io/ktin-workspace/`
    - *Redirect URLs*: thêm cùng địa chỉ trên (và `http://localhost:8000/` nếu chạy thử trên máy).
 5. **Authentication → Users → Invite user**: mời email của 3 thành viên.
 6. **Project Settings → API**: chép *Project URL* và *anon public key* vào `js/config.js`.
@@ -39,7 +39,7 @@ Công cụ web phục vụ **đồ án (tiểu luận) Kinh tế & Tổ chức s
 > `anon key` được phép nằm công khai trong mã web; bảo mật dựa trên chính sách RLS (chỉ người đã đăng nhập mới đọc/ghi). **Không bao giờ** đưa `service_role key` vào repo.
 
 ### 2. GitHub Pages
-**Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main`, thư mục `/ (root)` → Save. Sau 1–2 phút web chạy tại `https://<tên-github>.github.io/ktin-workspace/`.
+**Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main`, thư mục `/ (root)` → Save. Sau 1–2 phút web chạy tại `https://luong-hoang-phuc.github.io/ktin-workspace/`.
 
 ### 3. Mời thành viên vào repo (để cùng sửa code)
 **Settings → Collaborators → Add people** → nhập tài khoản GitHub của 2 bạn.
