@@ -11,7 +11,7 @@ const txt = (s) => 'data:text/plain;base64,' + btoa(unescape(encodeURIComponent(
 
 // demo = true: thêm 2 bạn giả lập, file mẫu, ghi chú, bảng trắng, hoạt động
 export function buildSeed(uuid, { demo = true } = {}) {
-  const t = { profiles: [], products: [], folders: [], machines: [], factory_nodes: [], product_plans: [], files: [], notes: [], boards: [], board_items: [], data_tables: [], data_rows: [], activity: [], settings: [] };
+  const t = { profiles: [], products: [], folders: [], machines: [], factory_nodes: [], product_plans: [], files: [], notes: [], messages: [], data_tables: [], data_rows: [], activity: [], settings: [] };
   const blobs = {};
   const meta = { products: {}, folders: {} };
   const A = demo ? BOT_A.id : null, B = demo ? BOT_B.id : null;
@@ -24,7 +24,6 @@ export function buildSeed(uuid, { demo = true } = {}) {
   meta.folders.factory = folder(null, 'factory', 'Phương án nhà máy (chung)', 0, '🏭');
   meta.folders.lecturer = folder(null, 'lecturer', 'Tài liệu giảng viên', 1, '📚');
   meta.folders.team = folder(null, 'team', 'Tài liệu nhóm', 2, '🗂️');
-  meta.folders.board = folder(null, 'board', 'Bảng trắng nhóm', 3, '✏️');
   PRODUCTS_DEFAULT.forEach((p, i) => {
     const id = uuid(); meta.products[p.kind] = id;
     t.products.push({ id, ...p, image_path: null, position: i, created_at: ago(3000) });
@@ -110,22 +109,12 @@ export function buildSeed(uuid, { demo = true } = {}) {
 - Số liệu NVL chính, điện, lương, khấu hao đang **chép tay** từ mục 5–6 (minh hoạ)
 - Bước sau: liên kết tự động giữa các mục`, B, 90);
 
-  // ---------- bảng trắng nhóm ----------
-  const bid = uuid(); meta.boardId = bid;
-  t.boards.push({ id: bid, folder_id: F.board, name: 'Phác thảo quy trình hộp', created_by: B, created_at: ago(500) });
-  const steps = [['Chế bản\nCTP 5 bản', '#bfdbfe'], ['In L640\n5 màu', '#fde68a'], ['Dán màng mờ\nDM1', '#fde68a'], ['UV từng phần\nTP1', '#fde68a'], ['Ép nhũ\nen1', '#fde68a'], ['Bế TĐ1', '#bbf7d0'], ['Xé rìa', '#bbf7d0'], ['Dán hộp\nDH1', '#bbf7d0'], ['Kiểm tra\nĐóng gói', '#ddd6fe']];
-  let z = 1;
-  const pos = (i) => { const row = Math.floor(i / 5), c = i % 5, col = row % 2 ? 4 - c : c; return { row, x: 40 + col * 230, y: 60 + row * 230 }; };
-  steps.forEach(([text, color], i) => {
-    const p = pos(i);
-    t.board_items.push({ id: uuid(), board_id: bid, kind: 'sticky', z: z++, data: { x: p.x, y: p.y, w: 170, h: 120, text, color }, updated_by: B, updated_at: ago(400) });
-    if (i < steps.length - 1) {
-      const q = pos(i + 1);
-      const a = q.row !== p.row ? { x1: p.x + 85, y1: p.y + 125, x2: q.x + 85, y2: q.y - 8 } : q.x > p.x ? { x1: p.x + 175, y1: p.y + 60, x2: q.x - 8, y2: q.y + 60 } : { x1: p.x - 5, y1: p.y + 60, x2: q.x + 178, y2: q.y + 60 };
-      t.board_items.push({ id: uuid(), board_id: bid, kind: 'arrow', z: z++, data: { ...a, color: '#1f2937' }, updated_by: B, updated_at: ago(400) });
-    }
-  });
-  t.board_items.push({ id: uuid(), board_id: bid, kind: 'text', z: z++, data: { x: 40, y: 0, w: 700, h: 50, text: 'Phác thảo – Hộp kem dưỡng 50.000 hộp', color: '#2563eb', size: 22 }, updated_by: B, updated_at: ago(400) });
+  // ---------- tin nhắn nhóm ----------
+  [[A, 'Mình nhập xong CSDL doanh nghiệp rồi nha, mọi người xem mục 1 giúp mình.', 1500],
+   [B, 'Ok, mình đang làm phương án sản xuất Hộp. Khổ 65 × 86 đặt được 8 hộp/tờ.', 1440],
+   [A, 'Nhớ hỏi cô vụ máy thành phẩm sách chưa có trong CSDL nhé', 1430],
+   [B, 'Mình vừa cập nhật file Word lên v2, chương 3 xong rồi.', 40]]
+    .forEach(([u, body, min]) => t.messages.push({ id: uuid(), user_id: u, body, created_at: ago(min) }));
 
   [[A, 'đã tải lên', 'Tài liệu giảng viên (7 file)', 2000, null], [A, 'nhập CSDL doanh nghiệp', 'Thiết bị, vật tư, đơn giá, tham số chung', 1800, null],
    [B, 'lập phương án sản xuất', 'Hộp: màng mờ, UV từng phần, ép nhũ', 900, 'hop'], [B, 'tính thời gian sản xuất', 'Hộp – 9 công đoạn', 300, 'hop'],

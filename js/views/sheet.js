@@ -7,7 +7,9 @@
 import db, { logActivity } from '../db.js';
 import { store, on, nameOf } from '../store.js';
 import { h, toast, toastErr, prompt, confirmBox, modal, popMenu, fill, downloadNote } from '../ui.js';
-import { computeSheet, toDisplay, toInternal, shiftRows, isFormula, parseNum, fmtValue, colLetter, FORMATS, FErr } from '../formula.js';
+import { computeSheet, internalToA1, a1ToInternal, shiftRefs, isFormula, parseNum, fmtValue, colLetter, FORMATS, FErr } from '../formula.js';
+import { watchSheets, bookOf } from './book.js';
+import { exportExcel, pickExcel } from './excel.js';
 import { BLANK_SHEET, sheetRows } from './templates.js';
 
 const TYPES = { text: 'Văn bản', number: 'Số', formula: 'Công thức (cả cột)', select: 'Lựa chọn', person: 'Thành viên', date: 'Ngày', check: 'Hộp kiểm' };
@@ -19,8 +21,10 @@ const cellText = (c, v) => c.type === 'person' ? nameOf(v) : c.type === 'check' 
 // =====================================================================
 // Nhiều bảng trong một mục: thanh tab (tab cố định + các bảng + “＋ Bảng mới”)
 // =====================================================================
-export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], intro }) {
+export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], intro, title = 'Bảng tính' }) {
   let tables = [], curKey = null, curCleanup = null;
+  const book = { data: [], subs: new Set() };
+  const offBook = watchSheets(folder.id, (d) => { book.data = d; book.subs.forEach(f => f()); });
   const wrap = h('div', { class: 'dt-wrap' });
   const tabs = h('div', { class: 'dt-list' });
   const body = h('div', { class: 'dt-body' });
@@ -32,7 +36,10 @@ export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], i
     fill(tabs,
       fixed.map(f => h('button', { class: `dt-pill fixed ${curKey === f.key ? 'on' : ''}`, onclick: () => open(f.key) }, f.label)),
       tables.map(t => h('button', { class: `dt-pill ${curKey === t.id ? 'on' : ''}`, onclick: () => open(t.id) }, '▦ ', t.name)),
-      h('button', { class: 'btn btn-sm', onclick: (e) => popMenu(e.currentTarget, [{ icon: '＋', label: 'Bảng trống', run: () => create(BLANK_SHEET) }, ...(templates.length ? ['-'] : []), ...templates.map(T => ({ icon: '▦', label: 'Mẫu: ' + T.name, run: () => create(T) }))]) }, '＋ Bảng mới ▾'));
+      h('button', { class: 'btn btn-sm', onclick: (e) => popMenu(e.currentTarget, [{ icon: '＋', label: 'Bảng trống', run: () => create(BLANK_SHEET) }, ...(templates.length ? ['-'] : []), ...templates.map(T => ({ icon: '▦', label: 'Mẫu: ' + T.name, run: () => create(T) }))]) }, '＋ Bảng mới ▾'),
+      h('div', { class: 'grow' }),
+      h('button', { class: 'btn btn-sm btn-xl', title: 'Nhập file Excel (.xlsx) – mỗi sheet thành một bảng, giữ nguyên hàm', onclick: () => pickExcel(folder, book.data) }, '⬆ Nhập Excel'),
+      h('button', { class: 'btn btn-sm btn-xl', title: 'Tải toàn bộ bảng của mục này thành file Excel (.xlsx) có hàm', onclick: () => exportExcel(book.data, title) }, '⬇ Tải Excel'));
   }
   function open(key) {
     if (!keys().includes(key)) key = keys()[0] ?? null;
@@ -42,7 +49,7 @@ export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], i
     if (key == null) { fill(body, h('div', { class: 'empty' }, h('div', { class: 'big' }, '▦'), h('p', {}, 'Chưa có bảng nào trong mục này.'), h('p', { class: 'small' }, 'Bấm “＋ Bảng mới” để tạo bảng trống hoặc từ mẫu đã đặt sẵn công thức.'))); return; }
     const f = fixed.find(x => x.key === key);
     if (f) { curCleanup = f.mount(body) || null; return; }
-    curCleanup = mountSheet(body, { table: tables.find(t => t.id === key), onDeleted: () => { tables = tables.filter(t => t.id !== key); open(keys()[0]); } });
+    curCleanup = mountSheet(body, { table: tables.find(t => t.id === key), book, onDeleted: () => { tables = tables.filter(t => t.id !== key); open(keys()[0]); } });
   }
   async function create(T) {
     const name = await prompt('Bảng mới', 'Tên bảng', T === BLANK_SHEET ? '' : T.name);
@@ -65,13 +72,13 @@ export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], i
     try { tables = await db.select('data_tables', { eq: { folder_id: folder.id }, order: ['created_at', true] }); open(sub && keys().includes(sub) ? sub : keys()[0]); }
     catch (e) { toastErr(e); }
   })();
-  return () => { off(); curCleanup?.(); };
+  return () => { off(); offBook(); curCleanup?.(); };
 }
 
 // =====================================================================
 // Một bảng tính
 // =====================================================================
-export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
+export function mountSheet(el, { table, tableId, compact = false, onDeleted, book }) {
   let cur = table || null, rows = [], comp = null, sel = null; // sel = { ri, key }
   const offs = [];
   const tools = h('div', { class: 'toolbar sheet-tools' });
@@ -80,7 +87,12 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   const room = db.room(`table-${tableId || table?.id}`, onRoom);
   const editing = new Map();
   const cols = () => cur?.columns || [];
-  const recompute = () => { comp = computeSheet(cols(), rows); };
+  let bctx = { cols: [], offset: 0 };
+  const recompute = () => { const B = bookOf(book?.data || [], { table: { ...cur, columns: cols() }, rows }); comp = B.sheet(cur.id); bctx = B.ctx(cur.id); };
+  const toDisplay = (f) => internalToA1(f, { ...bctx, cols: cols(), offset: 0 });
+  const toInternal = (t, cs) => a1ToInternal(t, { ...bctx, cols: cs || cols(), offset: 0 });
+  const onBook = () => { if (cur) refreshValues(); };
+  book?.subs.add(onBook);
 
   // ---------- thanh công cụ ----------
   function renderTools() {
@@ -89,11 +101,11 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
       h('div', { class: 'grow' }),
       h('button', { class: 'btn btn-sm', onclick: () => addRow(rows.length) }, '＋ Dòng'),
       h('button', { class: 'btn btn-sm', onclick: () => addColumn(cols().length) }, '＋ Cột'),
-      h('button', { class: 'btn btn-sm', title: 'Tải về dạng CSV (mở bằng Excel)', onclick: exportCsv }, '⬇ CSV'),
-      h('button', { class: 'btn btn-sm', title: 'Nhập từ file CSV', onclick: importCsv }, '⬆ Nhập CSV'),
       h('button', { class: 'icon-btn', onclick: (e) => popMenu(e.currentTarget, [
         { icon: '✏️', label: 'Đổi tên bảng', run: async () => { const n = await prompt('Đổi tên bảng', 'Tên', cur.name); if (n) db.update('data_tables', cur.id, { name: n }).catch(toastErr); } },
         { icon: 'ƒ', label: 'Cách viết công thức', run: helpFormula },
+        { icon: '⬇', label: 'Tải bảng này dạng CSV', run: exportCsv },
+        { icon: '⬆', label: 'Nhập thêm dòng từ CSV', run: importCsv },
         '-',
         { icon: '🗑️', label: 'Xoá bảng', danger: true, run: async () => { if (await confirmBox('Xoá bảng?', `Xoá “${cur.name}” và toàn bộ dữ liệu?`)) { try { await db.remove('data_tables', cur.id); logActivity(store.user, 'xoá bảng', cur.name); onDeleted?.(); } catch (e) { toastErr(e); } } } },
       ]) }, '⋯'));
@@ -102,9 +114,9 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   // ---------- thanh công thức ----------
   function rawOf(ri, key) {
     const c = cols().find(x => x.key === key); if (!c) return '';
-    if (c.formula) return toDisplay(c.formula, cols());
+    if (c.formula) return toDisplay(c.formula);
     const v = rows[ri]?.cells?.[key];
-    if (isFormula(v)) return toDisplay(v, cols());
+    if (isFormula(v)) return toDisplay(v);
     return v == null ? '' : typeof v === 'boolean' ? (v ? 'ĐÚNG' : '') : String(v);
   }
   function setSel(ri, key) {
@@ -115,7 +127,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
 
   const parseInput = (c, text) => {
     const t = String(text ?? '').replace(/\n$/, '');
-    if (isFormula(t)) return toInternal(t, cols());
+    if (isFormula(t)) return toInternal(t);
     if (c.type === 'number') return parseNum(t) ?? (t.trim() ? t : '');
     return t;
   };
@@ -128,7 +140,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     const table = h('table', { class: 'grid xl' },
       h('thead', {}, h('tr', {}, h('th', { class: 'idx corner' }, ''),
         cs.map((c, i) => h('th', { style: { minWidth: (c.width || (c.type === 'number' ? 110 : 130)) + 'px' }, class: c.formula ? 'fx' : '' },
-          h('div', { class: 'th' }, h('span', { class: 'colL' }, colLetter(i)), h('span', { class: 'lbl', title: c.formula ? 'Cột công thức: ' + toDisplay(c.formula, cs) : c.label }, c.label),
+          h('div', { class: 'th' }, h('span', { class: 'colL' }, colLetter(i)), h('span', { class: 'lbl', title: c.formula ? 'Cột công thức: ' + toDisplay(c.formula) : c.label }, c.label),
             c.formula ? h('span', { class: 'ty' }, 'ƒ') : null,
             h('button', { class: 'icon-btn', title: 'Tuỳ chọn cột', onclick: (e) => colMenu(i, e.currentTarget) }, '▾')))))),
       h('tbody', {}, rows.map((r, ri) => h('tr', { 'data-row': r.id, 'data-i': ri },
@@ -145,33 +157,34 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     if (sel) setSel(sel.ri, sel.key);
   }
 
-  function cell(r, ri, c) {
+  function cell(r, ri, c0) {
+    const c = r.cells?._f?.[c0.key] ? { ...c0, fmt: r.cells._f[c0.key] } : c0;
     const v = r.cells?.[c.key] ?? '';
     const computed = comp.get(ri, c.key);
-    const isNum = c.type === 'number' || c.formula || (isFormula(v) && typeof computed === 'number');
+    const isNum = c.type === 'number' || c.formula || typeof computed === 'number';
     const td = h('td', { class: `${isNum ? 'num' : ''} ${c.formula || isFormula(v) ? 'calc' : ''} ${computed instanceof FErr ? 'err' : ''}`, 'data-key': c.key });
     const who = editing.get(`${r.id}:${c.key}`);
     if (who) { td.classList.add('busy'); td.title = `${who} đang sửa`; }
     const set = (val) => saveCell(r, c, val);
     const focusSel = () => setSel(ri, c.key);
-    if (c.formula) { td.classList.add('lock'); td.append(h('div', { class: 'cell', title: toDisplay(c.formula, cols()) }, fmtValue(computed, c))); return td; }
-    if (c.type === 'select' || c.type === 'person') {
+    if (c.formula) { td.classList.add('lock'); td.append(h('div', { class: 'cell', title: toDisplay(c.formula) }, fmtValue(computed, c))); return td; }
+    if ((c.type === 'select' || c.type === 'person') && !isFormula(v)) {
       const opts = c.type === 'person' ? [...store.profiles.values()].map(p => [p.id, p.display_name || p.email]) : (c.options || []).map(o => [o, o]);
       td.append(h('select', { class: 'cell', onfocus: focusSel, onchange: (e) => set(e.target.value) }, h('option', { value: '' }, ''), opts.map(([val, label]) => h('option', { value: val, selected: v === val }, label)),
         c.type === 'select' && v && !(c.options || []).includes(v) ? h('option', { value: v, selected: true }, v) : null));
       return td;
     }
-    if (c.type === 'date') { td.append(h('input', { class: 'cell', type: 'date', value: isFormula(v) ? '' : v, onfocus: focusSel, onchange: (e) => set(e.target.value) })); return td; }
-    if (c.type === 'check') { td.append(h('div', { class: 'cell', style: { textAlign: 'center' } }, h('input', { type: 'checkbox', checked: !!v, onfocus: focusSel, onchange: (e) => set(e.target.checked) }))); return td; }
+    if (c.type === 'date' && !isFormula(v)) { td.append(h('input', { class: 'cell', type: 'date', value: isFormula(v) ? '' : v, onfocus: focusSel, onchange: (e) => set(e.target.value) })); return td; }
+    if (c.type === 'check' && !isFormula(v)) { td.append(h('div', { class: 'cell', style: { textAlign: 'center' } }, h('input', { type: 'checkbox', checked: !!v, onfocus: focusSel, onchange: (e) => set(e.target.checked) }))); return td; }
     const shown = fmtValue(computed, c);
     const locked = isFormula(v);
-    const div = h('div', { class: 'cell', contenteditable: locked ? 'false' : 'plaintext-only', spellcheck: false, title: locked ? toDisplay(v, cols()) + '  (bấm đúp để sửa)' : null }, shown);
+    const div = h('div', { class: 'cell', contenteditable: locked ? 'false' : 'plaintext-only', spellcheck: false, title: locked ? toDisplay(v) + '  (bấm đúp để sửa)' : null }, shown);
     if (locked) { td.classList.add('lock'); div.addEventListener('dblclick', () => { div.contentEditable = 'plaintext-only'; td.classList.remove('lock'); div.focus(); }); }
     div.addEventListener('focus', () => { div.textContent = rawOf(ri, c.key); focusSel(); room.send({ t: 'edit', k: `${r.id}:${c.key}`, name: store.me?.display_name }); });
     div.addEventListener('blur', () => {
       room.send({ t: 'done', k: `${r.id}:${c.key}` });
       const nv = parseInput(c, div.textContent);
-      if (isFormula(nv)) { div.contentEditable = 'false'; td.classList.add('lock'); div.title = toDisplay(nv, cols()); }
+      if (isFormula(nv)) { div.contentEditable = 'false'; td.classList.add('lock'); div.title = toDisplay(nv); }
       if (String(nv) !== String(v)) set(nv); else div.textContent = shown;
     });
     div.addEventListener('keydown', (e) => {
@@ -199,7 +212,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
       const ri = Number(tr.getAttribute('data-i'));
       tr.querySelectorAll('td[data-key]').forEach(td => {
         if (td.contains(document.activeElement)) return;
-        const c = cs.find(x => x.key === td.getAttribute('data-key')); if (!c || ['select', 'person', 'date', 'check'].includes(c.type)) return;
+        const c0 = cs.find(x => x.key === td.getAttribute('data-key')); if (!c0 || ['select', 'person', 'date', 'check'].includes(c0.type)) return;
+        const c = rows[ri]?.cells?._f?.[c0.key] ? { ...c0, fmt: rows[ri].cells._f[c0.key] } : c0;
         const v = comp.get(ri, c.key); const cell = td.querySelector('.cell'); if (!cell) return;
         const t = fmtValue(v, c); if (cell.textContent !== t) cell.textContent = t;
         td.classList.toggle('err', v instanceof FErr);
@@ -221,13 +235,15 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   // Dịch số dòng trong công thức khi chèn / xoá dòng (dòng thứ `at`, tính từ 1)
   async function shiftAll(at, delta, skipId) {
     const jobs = [];
-    for (const r of rows) {
-      if (r.id === skipId) continue;
+    const fix = (r, opt, skip) => {
+      if (r.id === skip) return;
       let changed = false; const cells = { ...(r.cells || {}) };
-      for (const [k, v] of Object.entries(cells)) if (isFormula(v)) { const nv = shiftRows(v, at, delta); if (nv !== v) { cells[k] = nv; changed = true; } }
+      for (const [k, v] of Object.entries(cells)) if (isFormula(v)) { const nv = shiftRefs(v, { ...opt, at, delta }); if (nv !== v) { cells[k] = nv; changed = true; } }
       if (changed) { r.cells = cells; jobs.push(db.update('data_rows', r.id, { cells, updated_by: store.user.id, updated_at: new Date().toISOString() })); }
-    }
-    const nc = cols().map(c => c.formula ? { ...c, formula: shiftRows(c.formula, at, delta) } : c);
+    };
+    rows.forEach(r => fix(r, { own: true }, skipId));
+    for (const d of book?.data || []) if (d.table.id !== cur.id) d.rows.forEach(r => fix(r, { tid: cur.id }));
+    const nc = cols().map(c => c.formula ? { ...c, formula: shiftRefs(c.formula, { own: true, at, delta }) } : c);
     if (JSON.stringify(nc) !== JSON.stringify(cols())) jobs.push(saveColumns(nc, false));
     await Promise.all(jobs).catch(toastErr);
   }
@@ -269,7 +285,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     const csNow = cols();
     const label = h('input', { class: 'input', value: c.label, placeholder: 'VD: Thành tiền' });
     const type = h('select', { class: 'select' }, Object.entries(TYPES).map(([k, v]) => h('option', { value: k, selected: (c.formula ? 'formula' : c.type) === k }, v)));
-    const formula = h('input', { class: 'input mono', value: c.formula ? toDisplay(c.formula, csNow) : '', placeholder: 'VD: =D@*E@  (@ = dòng hiện tại)' });
+    const formula = h('input', { class: 'input mono', value: c.formula ? toDisplay(c.formula) : '', placeholder: 'VD: =D@*E@  (@ = dòng hiện tại)' });
     const fmt = h('select', { class: 'select' }, Object.entries(FORMATS).map(([k, v]) => h('option', { value: k, selected: (c.fmt || 'auto') === k }, v)));
     const sum = h('input', { type: 'checkbox', checked: c.sum !== false });
     const opts = h('input', { class: 'input', value: (c.options || []).join(', '), placeholder: 'VD: Chưa làm, Đang làm, Xong' });
@@ -280,7 +296,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
     type.onchange = sync; sync();
     const letters = h('p', { class: 'small muted', style: { margin: '0 0 10px' } }, 'Các cột hiện có: ', csNow.map((x, i) => `${colLetter(i)} = ${x.label}`).join(' · '));
     const r = await modal(c.label ? 'Sửa cột' : 'Thêm cột', h('div', {}, h('label', { class: 'field' }, h('span', {}, 'Tên cột'), label), h('label', { class: 'field' }, h('span', {}, 'Kiểu dữ liệu'), type), fF, fN, fO, letters), [{ label: 'Huỷ', value: null }, { label: 'Lưu', value: 'ok', primary: true }]);
-    if (r !== 'ok' || !label.value.trim()) return null;
+    if (r !== 'ok') return null;
     const isF = type.value === 'formula';
     if (isF && !isFormula(formula.value)) { toast('Công thức phải bắt đầu bằng dấu =', 'error'); return null; }
     const ref = at != null ? [...csNow.slice(0, at), { key: '__new' }, ...csNow.slice(at)] : csNow;
@@ -393,7 +409,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted }) {
   }
   load().catch(toastErr);
   offs.push(on('profiles', () => cur && !document.activeElement?.isContentEditable && renderGrid()));
-  return () => { offs.forEach(f => f()); room.close(); };
+  return () => { offs.forEach(f => f()); room.close(); book?.subs.delete(onBook); };
 }
 
 function parseCsv(t) {
@@ -412,15 +428,15 @@ function parseCsv(t) {
 // =====================================================================
 // BẢN XEM CHỈ ĐỌC (Trang xem)
 // =====================================================================
-export function renderStatic(table, rows, { hide = [], highlight } = {}) {
+export function renderStatic(table, rows, { hide = [], highlight, book } = {}) {
   const rs = sorted(rows);
-  const s = computeSheet(table.columns, rs);
+  const s = book ? book.sheet(table.id) : computeSheet(table.columns, rs);
   const cs = table.columns.filter(c => !hide.includes(c.key));
   const any = cs.some(showsSum) && rs.length > 1;
   return h('div', { class: 'sv-scroll' }, h('table', { class: 'sv' },
-    h('thead', {}, h('tr', {}, h('th', { class: 'idx' }, '#'), cs.map(c => h('th', { class: c.type === 'number' || c.formula ? 'num' : '', style: c.type === 'text' ? { minWidth: Math.round((c.width || 120) * 0.7) + 'px' } : null }, c.label)))),
+    h('thead', {}, h('tr', {}, h('th', { class: 'idx' }, '#'), cs.map((c, ci) => h('th', { class: c.type === 'number' || c.formula ? 'num' : '', style: c.type === 'text' ? { minWidth: Math.round((c.width || 120) * 0.7) + 'px' } : null }, c.label || colLetter(table.columns.indexOf(c)))))),
     h('tbody', {}, rs.map((r, ri) => h('tr', { class: highlight?.(r, ri, s) ? 'hl' : '' }, h('td', { class: 'idx' }, ri + 1), cs.map(c => {
-      const v = s.get(ri, c.key);
+      const v = s.get(ri, c.key); c = r.cells?._f?.[c.key] ? { ...c, fmt: r.cells._f[c.key] } : c;
       return h('td', { class: `${c.type === 'number' || c.formula || typeof v === 'number' ? 'num' : ''} ${v instanceof FErr ? 'err' : ''}` }, cellText(c, v));
     })))),
     any ? h('tfoot', {}, h('tr', {}, h('td', { class: 'idx' }, 'Σ'), cs.map(c => { const t = showsSum(c) ? s.total(c.key) : null; return h('td', { class: 'num' }, t == null ? '' : fmtValue(t, c)); }))) : null));

@@ -4,7 +4,8 @@
 import db from '../db.js';
 import { store, on, folderFor, productOf } from '../store.js';
 import { h, fill, toastErr, throttle } from '../ui.js';
-import { computeSheet, parseNum, fmtNumber, dateToSerial, serialToISO, FErr } from '../formula.js';
+import { parseNum, fmtNumber, dateToSerial, serialToISO, FErr } from '../formula.js';
+import { watchSheets, bookOf } from './book.js';
 import { renderStatic } from './sheet.js';
 import { mountFactoryTree, mountMachineTable } from './factory.js';
 import { mountPlan } from './plan.js';
@@ -15,29 +16,14 @@ const sortRows = (rows) => [...rows].sort((a, b) => (a.position ?? 0) - (b.posit
 const hasCols = (t, ...keys) => keys.every(k => (t.columns || []).some(c => c.key === k));
 const money = (n) => n == null ? '—' : fmtNumber(n, 'vnd');
 
-// Tải toàn bộ bảng của một thư mục + theo dõi thay đổi
-export function watchSheets(folderId, onData) {
-  let data = [];
-  const load = throttle(async () => {
-    try {
-      const tables = await db.select('data_tables', { eq: { folder_id: folderId }, order: ['created_at', true] });
-      data = await Promise.all(tables.map(async t => ({ table: t, rows: sortRows(await db.select('data_rows', { eq: { table_id: t.id } })) })));
-      onData(data);
-    } catch (e) { toastErr(e); }
-  }, 400);
-  load();
-  const offs = [
-    db.subscribe('data_tables', ['folder_id', folderId], () => load()),
-    db.subscribe('data_rows', null, (e) => { const id = e.new?.table_id || e.old?.table_id; if (!id || data.some(d => d.table.id === id)) load(); }),
-  ];
-  return () => offs.forEach(f => f());
-}
+export { watchSheets };
 
 // Số liệu chính của một sản phẩm (dùng ở trang xem và Tổng quan)
 export function readFigures(sheets) {
   const out = {};
+  const B = bookOf(sheets);
   for (const { table, rows } of sheets) {
-    const s = computeSheet(table.columns, rows);
+    const s = B.sheet(table.id);
     if (hasCols(table, 'ma', 'giatri')) {
       rows.forEach((r, i) => { const v = s.get(i, 'giatri'); const n = v instanceof FErr ? null : parseNum(v); if (r.cells?.ma) out[r.cells.ma] = { label: r.cells.khoanmuc, value: v === '' ? null : n, tyle: parseNum(r.cells.tyle), unit: r.cells.dv }; });
     }
@@ -58,9 +44,9 @@ export function mountSectionView(el, { product, section }) {
   const offs = [];
   const sheetsBox = h('div', { class: 'v-sheets' });
   const empty = () => h('div', { class: 'empty' }, h('p', {}, 'Chưa có dữ liệu.'));
-  const sheetCards = (sheets, opts = {}) => sheets.length ? sheets.filter(x => !opts.skip?.(x)).map(({ table, rows }) => h('div', { class: 'card v-card' },
+  const sheetCards = (sheets, opts = {}) => { const B = bookOf(sheets); return sheets.length ? sheets.filter(x => !opts.skip?.(x)).map(({ table, rows }) => h('div', { class: 'card v-card' },
     h('div', { class: 'v-ch' }, h('h3', { class: 'serif' }, table.name)),
-    rows.length ? renderStatic(table, rows, opts.static?.(table)) : h('span', { class: 'muted' }, '—'))) : [empty()];
+    rows.length ? renderStatic(table, rows, { ...opts.static?.(table), book: B }) : h('span', { class: 'muted' }, '—'))) : [empty()]; };
 
   if (section === 'factory') {
     const treeBox = h('div', { class: 'card v-tree' });
@@ -68,7 +54,7 @@ export function mountSectionView(el, { product, section }) {
     page.append(treeBox, mBox, sheetsBox);
     offs.push(mountFactoryTree(treeBox, { product, readOnly: true }));
     offs.push(mountMachineTable(mBox, { readOnly: true }));
-    offs.push(watchSheets(folder.id, (sheets) => fill(sheetsBox, h('h3', { class: 'serif v-h' }, 'Cơ sở dữ liệu doanh nghiệp'), sheets.map(({ table, rows }) => h('details', { class: 'card v-card v-det' }, h('summary', { class: 'serif' }, table.name), renderStatic(table, rows))))));
+    offs.push(watchSheets(folder.id, (sheets) => fill(sheetsBox, h('h3', { class: 'serif v-h' }, 'Cơ sở dữ liệu doanh nghiệp'), (() => { const B = bookOf(sheets); return sheets.map(({ table, rows }) => h('details', { class: 'card v-card v-det' }, h('summary', { class: 'serif' }, table.name), renderStatic(table, rows, { book: B }))); })())));
   } else if (section === 'specs') {
     const head = h('div');
     const render = () => { const p = productOf(product.id) || product; fill(head, h('div', { class: 'v-spec' }, h('div', { class: 'v-img' }, productThumb(p, true)), h('div', {}, h('div', { class: 'stamp small-stamp' }, p.kind === 'sach' ? 'ĐƠN HÀNG 2' : 'ĐƠN HÀNG 1'), h('h2', { class: 'serif' }, p.name), h('p', { class: 'muted' }, p.subtitle), h('div', { class: 'meta' }, p.qty ? h('span', {}, p.qty) : null, p.due ? h('span', {}, p.due) : null)))); };
@@ -136,7 +122,7 @@ function schedule(f, product) {
     gantt = h('div', { class: 'card v-card' }, h('h3', { class: 'serif' }, 'Lịch trình sản xuất'),
       h('div', { class: 'gantt-scroll' }, h('div', { class: 'gantt', style: { gridTemplateColumns: `220px repeat(${days}, ${W}px)` } },
         h('div', { class: 'g-h g-name' }, 'Công đoạn · máy'),
-        Array.from({ length: days }, (_, i) => h('div', { class: `g-h ${S.start + i === today ? 'today' : ''} ${[0, 6].includes(new Date((S.start + i) * 864e5).getUTCDay()) ? 'we' : ''}` }, fmtD(S.start + i))),
+        Array.from({ length: days }, (_, i) => h('div', { class: `g-h ${S.start + i === today ? 'today' : ''} ${[0, 6].includes(new Date((S.start + i - 25569) * 864e5).getUTCDay()) ? 'we' : ''}` }, fmtD(S.start + i))),
         S.items.map((x, ri) => {
           const st = x.r.cells?.trangthai || SCHEDULE_STATUS[0];
           return [h('div', { class: 'g-name', style: { gridRow: ri + 2 } }, h('b', {}, x.r.cells?.congdoan || '—'), h('small', {}, [x.r.cells?.may, x.tlv != null ? fmtNumber(x.tlv, 'dec2') + ' h' : null].filter(Boolean).map(t => ' · ' + t).join(''))),

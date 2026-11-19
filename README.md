@@ -12,16 +12,17 @@ Công cụ web phục vụ **đồ án (tiểu luận) Kinh tế & Tổ chức s
 | Phần | Nội dung |
 |---|---|
 | **Trang xem** (8 mục + Tổng quan) | Mỗi mục có 3 tab: **Hiển thị** (lấy số từ Cơ sở dữ liệu, chỉ xem) · **Tệp đính kèm** · **Ghi chú**. Tổng quan: giá bán/SP, giá thành/SP, thời gian, lịch, tiến độ đồ án |
-| **🗄 Cơ sở dữ liệu** | Nơi nhập liệu cho 8 mục, dạng bảng tính như Excel: thêm/bớt dòng, cột; công thức `=C3*D3`, `=SUM(G1:G9)`, `=IF(...)`; cột công thức `=D@*E@` (@ = dòng hiện tại); thanh công thức; chèn/xoá dòng tự dịch tham chiếu; dán từ Excel; xuất/nhập CSV |
+| **🗄 Cơ sở dữ liệu** | Nơi nhập liệu cho 8 mục, dạng bảng tính như Excel: thêm/bớt dòng, cột; công thức `=C3*D3`, `=SUM(G1:G9)`, hàm trỏ sang bảng khác `='VẬT TƯ'!F8`; VLOOKUP, HLOOKUP, INDEX/MATCH, XLOOKUP, SUMIF(S), COUNTIF(S), SUMPRODUCT, IF/IFERROR, hàm chữ, hàm ngày; ô nhập màu trắng, ô tự tính màu xám; chèn/xoá dòng tự dịch tham chiếu |
+| **⬆ Nhập Excel / ⬇ Tải Excel** | Đưa file .xlsx lên: mỗi sheet thành một bảng, **giữ nguyên hàm**. Sheet trùng tên bảng cũ → ghi đè. Tải về: cả mục thành file .xlsx có hàm và số mới nhất (mở bằng Excel tự tính lại) |
 | **1. Phương án nhà máy** | **Chung cho cả công ty** (Hộp và Sách dùng chung): cây Khâu → Công đoạn (Chung/Hộp/Sách) → Máy; bảng thiết bị (xoay máy theo hàng/cột, thêm thông số); CSDL doanh nghiệp trích file của giảng viên: tham số chung, giá giấy, bù hao giấy in, bù hao GCBM – thành phẩm, vật tư & định mức, đơn giá lương, đơn giá chi phí |
 | **2. Thông số sản phẩm** | Ảnh sản phẩm + bảng thông số |
 | **3. Phương án sản xuất** | Dạng cây: ① Hiệu ứng (tích → tự chọn công đoạn gia công sau in) ② Công nghệ in (theo từng thành phần) ③ Quy trình: quy trình chung công ty, tích công đoạn sản phẩm đi qua + chọn máy ④ Bình trang & khuôn |
 | **4–6** | Khối lượng công việc, dự trù vật tư (KL SP × ĐM tiêu hao × (1 + bù hao)), thời gian (T máy chạy + canh bài + ngừng CN, KT, TCSX) – công thức theo bài giảng |
 | **7. Giá thành** | Khoản mục: NVL chính/phụ, năng lượng, lương + BH, khấu hao, SXC, QLDN, bán hàng + lợi nhuận mong muốn → giá bán / SP |
 | **8. Kế hoạch** | Công đoạn, máy, vật tư, ngày, checkpoint kiểm tra → trang xem hiện lộ trình, Gantt, checkpoint |
-| **Dùng chung** | 📁 Tài liệu (giảng viên / nhóm, lọc theo người gửi, loại file, nội dung), ✏️ Bảng trắng nhóm, ✦ link Canva chung |
+| **Góc dưới bên trái** | ✦ Canva · 📁 Tài liệu · 🗄 CSDL · 💬 Tin nhắn nhóm; thanh tài khoản; đồng đội online / offline và đang ở mục nào |
 
-> Hiện mỗi bảng tự tính trong chính nó. Liên kết số liệu giữa các mục (VD: tổng vật tư mục 5 → giá thành mục 7) sẽ làm ở bước sau.
+> Hàm trỏ được sang các bảng **trong cùng một mục**. Liên kết số liệu giữa các mục khác nhau (VD: tổng vật tư mục 5 → giá thành mục 7) sẽ làm ở bước sau.
 
 ## Cài đặt (trưởng nhóm làm 1 lần)
 
@@ -65,13 +66,16 @@ css/style.css           giao diện (phong cách giấy kraft)
 js/config.js            khoá Supabase (để trống = chế độ demo)
 js/db.js                chọn Supabase hoặc demo
 js/backend-*.js         lớp dữ liệu (CRUD, realtime, storage, presence)
-js/formula.js           bộ tính công thức kiểu Excel
+js/formula.js           bộ tính công thức kiểu Excel (nhiều sheet, dò tìm, điều kiện…)
+js/xlsx.js              đọc / ghi file .xlsx (JSZip trong js/vendor)
 js/app.js               đăng nhập, khung, điều hướng (trang xem / cơ sở dữ liệu)
 js/views/templates.js   cấu trúc mục, nhà máy, hiệu ứng, bảng mẫu + số liệu CSDL giảng viên
 js/views/sheet.js       bảng tính (nhập liệu) + bảng chỉ xem
+js/views/excel.js       nhập / xuất Excel cho một mục
+js/views/chat.js        tin nhắn nhóm
 js/views/factory.js     sơ đồ nhà máy chung + bảng thiết bị
 js/views/plan.js        phương án sản xuất dạng cây
 js/views/viewer.js      trang xem từng mục
-js/views/*.js           tổng quan, tài liệu, ghi chú, bảng trắng, thông số
+js/views/*.js           tổng quan, tài liệu, ghi chú, thông số
 supabase/setup.sql      tạo bảng, bảo mật, realtime, kho file, dữ liệu ban đầu
 ```

@@ -1,7 +1,7 @@
 // CHẾ ĐỘ DEMO: dữ liệu lưu trong trình duyệt (localStorage), "realtime" giữa các tab qua BroadcastChannel.
 // Dùng để xem thử giao diện khi chưa cấu hình Supabase.
 import { buildSeed } from './demo-seed.js';
-const KEY = 'ktin-demo-v4';
+const KEY = 'ktin-demo-v5';
 let bc = null; try { bc = new BroadcastChannel('ktin-demo'); } catch {}
 const listeners = new Set();
 const rooms = new Map();
@@ -65,7 +65,14 @@ const db = {
     const r = { id: table === 'activity' ? Date.now() + Math.random() : uuid(), created_at: now(), updated_at: now(), ...row };
     (state.t[table] ||= []).push(r); save(); emit(table, { type: 'INSERT', new: r, old: {} }); return structuredClone(r);
   },
-  async insertMany(table, rows) { const out = []; for (const r of rows) out.push(await this.insert(table, r)); return out; },
+  async insertMany(table, rows) {
+    const out = rows.map(row => ({ id: uuid(), created_at: now(), updated_at: now(), ...row }));
+    (state.t[table] ||= []).push(...out); save(); out.forEach(r => emit(table, { type: 'INSERT', new: r, old: {} })); return structuredClone(out);
+  },
+  async removeMany(table, ids) {
+    const set = new Set(ids); const olds = (state.t[table] || []).filter(r => set.has(r.id));
+    state.t[table] = (state.t[table] || []).filter(r => !set.has(r.id)); save(); olds.forEach(o => emit(table, { type: 'DELETE', new: {}, old: o }));
+  },
   async update(table, id, patch) {
     const r = (state.t[table] || []).find(x => x.id === id); if (!r) return null;
     const old = { ...r }; Object.assign(r, patch); save(); emit(table, { type: 'UPDATE', new: r, old }); return structuredClone(r);
@@ -76,7 +83,7 @@ const db = {
     // xoá dây chuyền đơn giản
     const cascade = { folders: [['folders', 'parent_id'], ['files', 'folder_id'], ['notes', 'folder_id'], ['boards', 'folder_id'], ['data_tables', 'folder_id']], boards: [['board_items', 'board_id']], data_tables: [['data_rows', 'table_id']], files: [['files', 'parent_file_id']], factory_nodes: [['factory_nodes', 'parent_id']], machines: [['factory_nodes', 'machine_id']] }[table] || [];
     save(); emit(table, { type: 'DELETE', new: {}, old });
-    for (const [t, col] of cascade) for (const r of state.t[t].filter(x => x[col] === id)) await this.remove(t, r.id);
+    for (const [t, col] of cascade) for (const r of (state.t[t] || []).filter(x => x[col] === id)) await this.remove(t, r.id);
   },
   subscribe(table, filter, cb) { const l = { table, filter, cb }; listeners.add(l); return () => listeners.delete(l); },
   room(name, onMessage) {

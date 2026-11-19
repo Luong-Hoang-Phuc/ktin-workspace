@@ -35,7 +35,8 @@ const db = {
   },
   async get(table, id) { return must(await sb.from(table).select('*').eq('id', id).maybeSingle()); },
   async insert(table, row) { return must(await sb.from(table).insert(row).select().single()); },
-  async insertMany(table, rows) { return must(await sb.from(table).insert(rows).select()); },
+  async insertMany(table, rows) { const out = []; for (let i = 0; i < rows.length; i += 500) out.push(...must(await sb.from(table).insert(rows.slice(i, i + 500)).select())); return out; },
+  async removeMany(table, ids) { for (let i = 0; i < ids.length; i += 200) must(await sb.from(table).delete().in('id', ids.slice(i, i + 200))); },
   async update(table, id, patch) { return must(await sb.from(table).update(patch).eq('id', id).select().maybeSingle()); },
   async remove(table, id) { must(await sb.from(table).delete().eq('id', id)); },
 

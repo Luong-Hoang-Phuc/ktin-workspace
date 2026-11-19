@@ -78,15 +78,13 @@ const STEPS = [
     await db.insert('files', { folder_id: fid, name, storage_path: path, size: 182000 + round * 3100, mime: 'application/pdf', version: 1, uploaded_by: BOT_B.id, description: `32 trang/tờ 65×86 – phương án ${round}`, created_at: now(), updated_at: now() });
     log(BOT_B, 'đã tải lên', `${name} → Sách › 3. Phương án sản xuất`, 'sach');
   },
-  // 6. Minh Anh kéo ghi chú trên bảng trắng nhóm
+  // 6. Minh Anh nhắn tin cho nhóm
   async () => {
-    where(BOT_A, null, 'board', 'Bảng trắng');
-    const bid = M().boardId;
-    for (let i = 0; i <= 20 && running; i++) { sim().room(`board-${bid}`, { t: 'cur', uid: BOT_A.id, name: BOT_A.display_name, color: BOT_A.color, x: 300 + i * 30, y: 200 + Math.sin(i / 3) * 60 }); await sleep(90); }
-    const it = (await db.select('board_items', { eq: { board_id: bid } })).find(x => x.kind === 'sticky' && /Kiểm tra/.test(x.data.text)); if (!it) return;
-    const dy = it.data.y > 300 ? -40 : 40; const d0 = { ...it.data };
-    for (let i = 1; i <= 10 && running; i++) { const data = { ...d0, y: d0.y + dy * i / 10 }; sim().room(`board-${bid}`, { t: 'move', id: it.id, data }); await sleep(80); }
-    await db.update('board_items', it.id, { data: { ...d0, y: d0.y + dy }, updated_by: BOT_A.id, updated_at: now() });
+    where(BOT_A, null, 'chat', 'Tin nhắn');
+    const lines = ['Mình vừa sửa năng suất L640, mọi người kiểm tra lại bảng Thời gian nhé', 'Giá thành hộp đang ra khoảng 1.200 đ/hộp, nghe hợp lý không?', 'Tối nay họp online 20h nha 👋'];
+    sim().room('chat-team', { t: 'typing', uid: BOT_A.id, name: BOT_A.display_name });
+    await sleep(1800);
+    await db.insert('messages', { user_id: BOT_A.id, body: lines[round % lines.length] });
   },
   // 7. Quốc Bảo khoá / cập nhật file Word chung
   async () => {

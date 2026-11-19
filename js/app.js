@@ -7,7 +7,7 @@ import { mountPicker, productThumb } from './views/picker.js';
 import { mountOverview } from './views/dashboard.js';
 import { mountFiles } from './views/files.js';
 import { mountNotes } from './views/notes.js';
-import { mountBoards } from './views/board.js';
+import { mountChat, lastRead } from './views/chat.js';
 import { mountSheets } from './views/sheet.js';
 import { mountFactoryTree, mountMachineTable } from './views/factory.js';
 import { mountSpecs } from './views/specs.js';
@@ -53,6 +53,15 @@ async function start(user, fresh = false) {
   db.subscribe('folders', null, (e) => { if (e.type === 'DELETE') store.folders = store.folders.filter(f => f.id !== e.old.id); else upsertList(store.folders, e.new); emit('folders'); });
   db.subscribe('settings', null, (e) => { if (e.type !== 'DELETE') { store.settings.set(e.new.id, e.new.value); renderTop(); emit('settings'); } });
   db.subscribe('profiles', null, (e) => { if (e.type !== 'DELETE') { store.profiles.set(e.new.id, e.new); if (e.new.id === user.id) store.me = e.new; renderTop(); emit('profiles'); } });
+
+  // tin nhắn chưa đọc
+  try { const lr = lastRead(); store.unread = (await db.select('messages')).filter(m => m.user_id !== user.id && m.created_at > lr).length; } catch { store.unread = 0; }
+  db.subscribe('messages', null, (e) => {
+    if (e.type !== 'INSERT' || e.new.user_id === user.id || store.route.view === 'chat') return;
+    store.unread = (store.unread || 0) + 1; renderSide();
+    const who = store.profiles.get(e.new.user_id)?.display_name || 'Ai đó';
+    toast(`💬 ${who}: ${e.new.body.length > 60 ? e.new.body.slice(0, 60) + '…' : e.new.body}`);
+  });
 
   renderShell();
   store.presence = db.presence({ id: user.id, name: store.me?.display_name || user.email, color: store.me?.color || '#b5462f' },
@@ -131,9 +140,8 @@ function renderShell() {
 
 function renderTop() {
   if (!topEl) return;
-  const me = store.me, p = productOf(store.productId);
+  const p = productOf(store.productId);
   const v = store.route.view;
-  const inProduct = v === 'product' || v === 'db';
   const canva = store.settings.get('canva_url');
   fill(topEl,
     h('button', { class: 'burger', title: 'Menu · chuyển sản phẩm', onclick: openDrawer }, h('span'), h('span'), h('span')),
@@ -143,19 +151,8 @@ function renderTop() {
     db.demo ? h('span', { class: 'demo-pill', title: 'Dữ liệu chỉ lưu trên trình duyệt này' }, 'Bản xem thử') : null,
     db.demo ? h('button', { class: `btn btn-sm ${sim?.isRunning() ? 'btn-primary' : 'btn-ghost'}`, title: 'Giả lập 2 bạn cùng nhóm đang làm việc', onclick: toggleSim }, sim?.isRunning() ? '⏸ Dừng mô phỏng' : '▶ Mô phỏng nhóm') : null,
     h('div', { class: 'canva-group' },
-      h('button', { class: 'btn btn-canva btn-sm', title: canva ? 'Mở Canva – template thuyết trình (chung 2 sản phẩm)' : 'Chưa gắn link Canva', onclick: openCanva }, '✦ Canva'),
-      h('button', { class: 'icon-btn light', title: 'Sửa link Canva', onclick: editCanva }, '✎')),
-    h('div', { class: 'top-icons' },
-      h('a', { class: `tico ${v === 'docs' ? 'on' : ''}`, href: '#/docs/lecturer', title: 'Tài liệu giảng viên & nhóm' }, h('span', {}, '📁'), 'Tài liệu'),
-      h('a', { class: `tico db ${v === 'db' ? 'on' : ''}`, href: dbHref(), title: 'Cơ sở dữ liệu – nơi nhập liệu như Excel cho 8 mục' }, h('span', {}, '🗄'), 'Cơ sở dữ liệu')),
-    h('div', { class: 'online' }, store.online.map(o => {
-      const a = avatar({ display_name: o.name, color: o.color }, 30);
-      const pp = productOf(o.productId);
-      a.title = `${o.name}${o.id === store.user.id ? ' (bạn)' : ''} – ${pp ? pp.name + (o.sectionLabel ? ' › ' + o.sectionLabel : '') : o.docs ? 'Tài liệu' : 'Chọn sản phẩm'}`;
-      return a;
-    })),
-    h('div', { class: 'user-chip', onclick: openProfile }, avatar(me, 28), h('span', {}, me?.display_name || store.user.email)),
-  );
+      h('button', { class: 'btn btn-canva', title: canva ? 'Mở Canva – template thuyết trình (chung 2 sản phẩm)' : 'Chưa gắn link Canva', onclick: openCanva }, '✦ Canva'),
+      h('button', { class: 'icon-btn light', title: 'Sửa link Canva', onclick: editCanva }, '✎')));
 }
 
 function dbHref() {
@@ -166,9 +163,8 @@ function dbHref() {
 function renderSide() {
   if (!sideEl) return;
   const r = store.route, pid = store.productId;
-  shellEl.classList.toggle('no-side', r.view === 'pick');
+  shellEl.classList.remove('no-side');
   sideEl.classList.toggle('db-mode', r.view === 'db');
-  if (r.view === 'pick' || !pid) { fill(sideEl); return; }
   const here = (key, mode) => store.online.filter(o => o.id !== store.user.id && (key === 'factory' || o.productId === pid) && o.section === key && (o.mode || 'view') === mode);
   const item = (s, mode) => {
     const on = r.view === (mode === 'db' ? 'db' : 'product') && r.section === s.key;
@@ -176,23 +172,34 @@ function renderSide() {
       h('span', { class: 'ni' }, s.n ? String(s.n) : '◎'), h('span', { class: 'nl' }, s.label),
       here(s.key, mode).length ? h('span', { class: 'here' }, here(s.key, mode).slice(0, 3).map(o => avatar({ display_name: o.name, color: o.color }, 18))) : null);
   };
-  if (r.view === 'db') {
-    fill(sideEl,
-      h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu')),
-      WORK_SECTIONS.map(s => item(s, 'db')),
-      h('div', { class: 'side-head' }, 'Chuyển'),
-      h('a', { class: 'nav', href: `#/p/${pid}/${r.section || 'overview'}` }, h('span', { class: 'ni' }, '👁'), h('span', { class: 'nl' }, 'Về trang xem')),
-      h('a', { class: 'nav', href: '#/docs/lecturer' }, h('span', { class: 'ni' }, '📁'), h('span', { class: 'nl' }, 'Tài liệu')));
-    return;
-  }
+  let nav;
+  if (r.view === 'pick' || !pid) nav = [h('div', { class: 'side-head' }, 'Chọn sản phẩm'), store.products.map(p => h('a', { class: 'nav', href: `#/p/${p.id}/overview` }, h('span', { class: 'ni' }, '▸'), h('span', { class: 'nl' }, p.name)))];
+  else if (r.view === 'db') nav = [h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu')), WORK_SECTIONS.map(s => item(s, 'db')),
+    h('a', { class: 'nav back', href: `#/p/${pid}/${r.section || 'overview'}` }, h('span', { class: 'ni' }, '←'), h('span', { class: 'nl' }, 'Về trang xem'))];
+  else nav = [h('div', { class: 'side-head' }, 'Trang xem'), SECTIONS.map(s => item(s, 'view'))];
+
+  // ----- góc dưới: Canva · Tài liệu · CSDL · Tin nhắn → tài khoản → đồng đội -----
+  const ico = (icon, label, opts) => h(opts.href ? 'a' : 'button', { class: `dock-ic ${opts.on ? 'on' : ''}`, href: opts.href, onclick: opts.run, title: label }, h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label), opts.badge ? h('span', { class: 'badge-n' }, opts.badge > 99 ? '99+' : opts.badge) : null);
+  const me = store.me;
+  const onlineIds = new Set(store.online.map(o => o.id));
+  const where = (id) => { const o = store.online.find(x => x.id === id); if (!o) return 'Offline'; if (o.section === 'chat') return 'Đang ở Tin nhắn'; const pp = productOf(o.productId); return pp ? `${pp.name}${o.sectionLabel ? ' › ' + o.sectionLabel : ''}` : o.docs ? 'Tài liệu' : 'Online'; };
+  const team = [...store.profiles.values()].filter(p => p.id !== store.user.id).sort((a, b) => (onlineIds.has(b.id) - onlineIds.has(a.id)) || (a.display_name || '').localeCompare(b.display_name || ''));
   fill(sideEl,
-    h('div', { class: 'side-head' }, 'Trang xem'),
-    SECTIONS.map(s => item(s, 'view')),
-    h('div', { class: 'side-head' }, 'Làm việc'),
-    h('a', { class: 'nav nav-db', href: dbHref() }, h('span', { class: 'ni' }, '🗄'), h('span', { class: 'nl' }, 'Cơ sở dữ liệu')),
-    h('a', { class: `nav ${r.view === 'docs' ? 'on' : ''}`, href: '#/docs/lecturer' }, h('span', { class: 'ni' }, '📁'), h('span', { class: 'nl' }, 'Tài liệu')),
-    h('a', { class: `nav ${r.view === 'board' ? 'on' : ''}`, href: '#/board' }, h('span', { class: 'ni' }, '✏️'), h('span', { class: 'nl' }, 'Bảng trắng nhóm')),
-  );
+    h('div', { class: 'side-nav' }, nav),
+    h('div', { class: 'side-dock' },
+      h('div', { class: 'dock-icons' },
+        ico('✦', 'Canva', { run: openCanva }),
+        ico('📁', 'Tài liệu', { href: '#/docs/lecturer', on: r.view === 'docs' }),
+        ico('🗄', 'CSDL', { href: dbHref(), on: r.view === 'db' }),
+        ico('💬', 'Tin nhắn', { href: '#/chat', on: r.view === 'chat', badge: store.unread })),
+      h('div', { class: 'dock-me' },
+        h('span', { class: 'av-wrap on' }, avatar(me, 32)),
+        h('div', { class: 'grow', onclick: openProfile, style: { cursor: 'pointer', minWidth: 0 } }, h('b', {}, me?.display_name || store.user.email), h('small', {}, store.user.email)),
+        h('button', { class: 'icon-btn', title: 'Tài khoản', onclick: (e) => popMenu(e.currentTarget, [
+          { icon: '👤', label: 'Hồ sơ của bạn', run: openProfile }, { icon: '✎', label: 'Sửa link Canva', run: editCanva },
+          db.demo ? { icon: '↺', label: 'Đặt lại dữ liệu mẫu', run: resetDemo } : null, '-', { icon: '⎋', label: 'Đăng xuất', danger: true, run: signOut }].filter(Boolean)) }, '⋯')),
+      h('div', { class: 'dock-team' }, team.map(p => h('div', { class: `mate ${onlineIds.has(p.id) ? 'on' : ''}`, title: where(p.id) },
+        h('span', { class: 'av-wrap' }, avatar(p, 26)), h('div', { class: 'grow' }, h('b', {}, p.display_name || p.email), h('small', {}, where(p.id))))))));
 }
 
 // ---------- menu ☰ ----------
@@ -213,7 +220,7 @@ function openDrawer() {
     h('div', { class: 'dr-sec' }, 'Dùng chung'),
     item('🗄', 'Cơ sở dữ liệu', () => go(dbHref())),
     item('📁', 'Tài liệu', () => go('#/docs/lecturer')),
-    item('✏️', 'Bảng trắng nhóm', () => go('#/board')),
+    item('💬', 'Tin nhắn', () => go('#/chat'), { right: store.unread ? h('span', { class: 'badge-n' }, store.unread) : null }),
     item('✦', 'Canva – template thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn link' }),
     item('✎', 'Sửa link Canva', editCanva),
     h('div', { class: 'dr-sec' }, 'Tài khoản'),
@@ -304,10 +311,10 @@ function route() {
     store.productId = fallbackPid();
     store.route = { view: 'docs', branch: parts[1] === 'team' ? 'team' : 'lecturer' };
     renderDocs();
-  } else if (parts[0] === 'board') {
+  } else if (parts[0] === 'chat') {
     store.productId = fallbackPid();
-    store.route = { view: 'board', sub: parts[1] || null };
-    renderBoard();
+    store.route = { view: 'chat' };
+    renderChat();
   } else {
     store.route = { view: 'pick' };
     setWhere({ productId: null, section: null, sectionLabel: null, docs: false, mode: null });
@@ -368,17 +375,16 @@ async function renderDb(sec) {
     specs: [{ key: 'info', label: '🖼 Ảnh & thông tin chung', mount: (el) => mountSpecs(el, { product: p, folder }) }],
     plan: [{ key: 'tree', label: '🌳 Phương án (dạng cây)', mount: (el) => mountPlan(el, { product: p }) }],
   }[sec.key] || [];
-  cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [] });
+  cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [], title: `${secLabel(sec)} – ${sec.company ? 'Cong ty' : p.name}` });
 }
 
-function renderBoard() {
-  setWhere({ productId: null, section: 'board', sectionLabel: 'Bảng trắng', docs: false, mode: 'view' });
-  const folder = docsFolder('board');
-  const body = h('div', { class: 'tab-body' });
-  const head = h('div', { class: 'page-head' }, h('div', { class: 'crumbs' }, h('span', {}, 'Dùng chung')), h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, '✏️'), h('h1', { class: 'serif' }, 'Bảng trắng nhóm')));
+function renderChat() {
+  setWhere({ productId: null, section: 'chat', sectionLabel: 'Tin nhắn', docs: false, mode: null });
+  store.unread = 0;
+  const body = h('div', { class: 'tab-body chat-body' });
+  const head = h('div', { class: 'page-head' }, h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, '💬'), h('h1', { class: 'serif' }, 'Tin nhắn nhóm')));
   fill(mainEl, h('div', { class: 'page-full' }, head, body));
-  if (!folder) { fill(body, h('div', { class: 'page' }, h('div', { class: 'empty' }, 'Chưa có thư mục bảng trắng. Chạy lại supabase/setup.sql.'))); return; }
-  cleanup = mountBoards(body, { folder, sub: store.route.sub, go: (s) => { history.replaceState(null, '', `#/board${s ? '/' + s : ''}`); store.route.sub = s; } });
+  cleanup = mountChat(body, { onRead: () => { if (store.unread) { store.unread = 0; renderSide(); } } });
 }
 
 function renderDocs() {
