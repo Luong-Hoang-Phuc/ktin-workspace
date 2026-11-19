@@ -155,7 +155,7 @@ h1, h2, h3 { font-family: 'Bitter', Georgia, serif; }
 .pthumb svg { width: 72%; height: 72%; }
 .pthumb.big { width: 120px; height: 120px; }
 .pthumb.has-img { background: #fff !important; }
-.pthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pthumb img { width: 100%; height: 100%; object-fit: contain; object-position: center; padding: 4%; box-sizing: border-box; display: block; background: #fff; }
 
 /* ---------- trang chọn sản phẩm ---------- */
 .picker { padding: 36px 64px 48px; max-width: 1240px; margin: 0 auto; }
@@ -260,7 +260,7 @@ a.step-t:hover { color: var(--rd); }
 .spec-drop .pthumb.big { width: 100%; height: 100%; }
 .spec-drop .pthumb:not(.has-img) svg { width: 130px; height: 130px; }
 .spec-hint { position: absolute; bottom: 16px; left: 16px; right: 16px; background: var(--paper); border-radius: 4px; padding: 10px 12px; display: grid; gap: 3px; font-size: 12.5px; }
-.spec-img .pthumb.has-img img { object-fit: contain; background: #fff; }
+.spec-img .pthumb.has-img img { padding: 2%; }
 
 /* ---------- tài liệu ---------- */
 .filters { display: grid; gap: 8px; margin-bottom: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
