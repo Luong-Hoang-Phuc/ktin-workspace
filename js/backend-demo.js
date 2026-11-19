@@ -1,7 +1,8 @@
 // CHẾ ĐỘ DEMO: dữ liệu lưu trong trình duyệt (localStorage), "realtime" giữa các tab qua BroadcastChannel.
 // Dùng để xem thử giao diện khi chưa cấu hình Supabase.
-const KEY = 'ktin-demo-v1';
-const bc = 'BroadcastChannel' in self ? new BroadcastChannel('ktin-demo') : null;
+import { buildSeed } from './demo-seed.js';
+const KEY = 'ktin-demo-v2';
+let bc = null; try { bc = new BroadcastChannel('ktin-demo'); } catch {}
 const listeners = new Set();
 const rooms = new Map();
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now());
@@ -11,14 +12,10 @@ function load() {
   try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) return s; } catch {}
   return seed();
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { console.warn('Demo storage full', e); } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { console.warn('Demo storage unavailable', e); } }
 function seed() {
-  const folders = [
-    ['00. Tài liệu giảng viên', '📚'], ['01. Phương án nhà máy & CSDL', '🏭'], ['02. Dữ liệu máy', '⚙️'],
-    ['03. Thông số sản phẩm – Hộp', '📦'], ['04. Thông số sản phẩm – Sách', '📖'], ['05. Phương án sản xuất', '🗺️'],
-    ['06. Vật tư & thời gian', '🧮'], ['07. Giá thành', '💰'], ['08. Kế hoạch sản xuất', '📅'], ['09. Báo cáo Word', '📝'],
-  ].map(([name, icon], i) => ({ id: uuid(), parent_id: null, name, icon, position: i, created_by: null, created_at: now() }));
-  return { t: { profiles: [], folders, files: [], notes: [], boards: [], board_items: [], data_tables: [], data_rows: [], activity: [] }, blobs: {}, user: null };
+  const s = buildSeed(uuid);
+  return { t: s.t, blobs: s.blobs, user: null, meta: { folders: s.folders, boardId: s.boardId, wordId: s.wordId } };
 }
 let state = load();
 
@@ -30,14 +27,14 @@ function emit(table, evt, local = true) {
   if (local && bc) bc.postMessage({ kind: 'db', table, evt });
 }
 if (bc) bc.onmessage = ({ data }) => {
-  if (data.kind === 'db') { state = load(); emit(data.table, data.evt, false); }
+  if (data.kind === 'db') { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) state = s; } catch {} emit(data.table, data.evt, false); }
   if (data.kind === 'room') rooms.get(data.name)?.forEach(fn => fn(data.payload));
   if (data.kind === 'presence') presenceIn(data.p);
 };
 
 // presence
 const peers = new Map(); let presenceCb = null; let mePresence = null;
-function presenceIn(p) { if (p.leave) peers.delete(p.id); else peers.set(p.id, { ...p, seen: Date.now() }); firePresence(); }
+function presenceIn(p, ttl = 0) { if (p.leave) peers.delete(p.id); else peers.set(p.id, { ...p, seen: Date.now() + ttl }); firePresence(); }
 function firePresence() {
   if (!presenceCb) return;
   for (const [k, v] of peers) if (Date.now() - v.seen > 15000) peers.delete(k);
@@ -50,9 +47,9 @@ const db = {
   async getUser() { return state.user; },
   onAuth(cb) { authCbs.push(cb); },
   async signInOtp(email) { return this.signInPassword(email); },
-  async signInPassword(email) {
+  async signInPassword(email, nick) {
     let p = state.t.profiles.find(x => x.email === email);
-    if (!p) { p = { id: uuid(), email, display_name: email.split('@')[0], color: ['#2563eb', '#db2777', '#059669', '#d97706'][state.t.profiles.length % 4], created_at: now() }; state.t.profiles.push(p); }
+    if (!p) { p = { id: uuid(), email, display_name: nick || email.split('@')[0], color: '#2563eb', created_at: now() }; state.t.profiles.push(p); }
     state.user = { id: p.id, email }; save(); authCbs.forEach(cb => cb(state.user));
   },
   async setPassword() {},
@@ -103,5 +100,13 @@ const db = {
   },
   async fileUrl(path) { return state.blobs[path] || '#'; },
   async removeFile(path) { delete state.blobs[path]; save(); },
+
+  // ---- chỉ dùng cho bản xem thử: mô phỏng thành viên khác ----
+  _sim: {
+    meta: () => state.meta || {},
+    peer: (p) => presenceIn(p, 1e12),
+    room: (name, payload) => rooms.get(name)?.forEach(fn => fn(payload)),
+    reset: () => { try { localStorage.removeItem(KEY); } catch {} },
+  },
 };
 export default db;

@@ -110,7 +110,7 @@ export function miniMarkdown(src) {
     if ((m = raw.match(/^(#{1,3})\s+(.*)/))) { closeList(); out += `<h${m[1].length + 1}>${inline(m[2])}</h${m[1].length + 1}>`; }
     else if ((m = raw.match(/^\s*[-*]\s+\[( |x)\]\s+(.*)/i))) { if (inList !== 'ul') { closeList(); out += '<ul class="checks">'; inList = 'ul'; } out += `<li>${m[1].toLowerCase() === 'x' ? '☑' : '☐'} ${inline(m[2])}</li>`; }
     else if ((m = raw.match(/^\s*[-*]\s+(.*)/))) { if (inList !== 'ul') { closeList(); out += '<ul>'; inList = 'ul'; } out += `<li>${inline(m[1])}</li>`; }
-    else if ((m = raw.match(/^\s*\d+[.)]\s+(.*)/))) { if (inList !== 'ol') { closeList(); out += '<ol>'; inList = 'ol'; } out += `<li>${inline(m[1])}</li>`; }
+    else if ((m = raw.match(/^\s*\d+[.)]\s+(.*)/))) { if (inList !== 'ol') { closeList(); out += `<ol start="${parseInt(raw, 10) || 1}">`; inList = 'ol'; } out += `<li>${inline(m[1])}</li>`; }
     else if (raw.trim() === '') { closeList(); out += ''; }
     else if (raw.startsWith('&gt; ')) { closeList(); out += `<blockquote>${inline(raw.slice(5))}</blockquote>`; }
     else { closeList(); out += `<p>${inline(raw)}</p>`; }
@@ -134,4 +134,10 @@ export function popMenu(anchor, items) {
 export function fill(el, ...children) {
   el.replaceChildren(...children.flat(Infinity).filter(c => c != null && c !== false).map(c => c instanceof Node ? c : document.createTextNode(String(c))));
   return el;
+}
+
+// Trang xem thử chạy trong khung bảo vệ nên trình duyệt chặn tải file: báo cho người dùng
+export function downloadNote() {
+  let framed = false; try { framed = window.top !== window; } catch { framed = true; }
+  if (framed) toast('Bản xem thử không tải file về được. Bản chính trên GitHub sẽ tải bình thường.');
 }

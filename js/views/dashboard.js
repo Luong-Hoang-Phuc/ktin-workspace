@@ -1,28 +1,7 @@
 import db, { logActivity } from '../db.js';
 import { store, on, nameOf, profileOf, folderOf } from '../store.js';
 import { h, fmtTime, avatar, toastErr, fill } from '../ui.js';
-
-export const PROGRESS_NAME = 'Tiến độ đồ án';
-export const STATUS = ['Chưa làm', 'Đang làm', 'Chờ duyệt', 'Xong'];
-const STEPS = [
-  ['Xác định phương án nhà máy & CSDL', 'Quy trình, công nghệ – thiết bị, CSDL máy, vật tư, đơn giá'],
-  ['Xác định thông số kỹ thuật sản phẩm', 'Hộp và sách: cấu trúc, kích thước, vật liệu, màu in, GCBM'],
-  ['Lập phương án sản xuất', 'Khổ giấy, layout, cách in, khuôn GCBM, khuôn bế, chọn máy'],
-  ['Tính khối lượng công việc', 'Theo đơn vị năng suất từng máy, có bù hao'],
-  ['Dự trù vật tư', 'Giấy, kẽm, mực, màng, verni, nhũ, keo, chỉ…'],
-  ['Tính thời gian sản xuất', 'T máy chạy, canh bài, ngừng CN/KT/TCSX'],
-  ['Tính giá thành theo khoản mục', 'NVL, lương, BH, khấu hao, SXC, QLDN, bán hàng'],
-  ['Lập kế hoạch sản xuất', 'Lịch trình, Gantt, theo dõi tiến độ'],
-  ['Hoàn thiện báo cáo Word & file Excel', 'Ghép chương, rà soát số liệu, định dạng'],
-];
-export const PROGRESS_COLUMNS = [
-  { key: 'buoc', label: 'Bước', type: 'text', width: 60 },
-  { key: 'noidung', label: 'Nội dung', type: 'text', width: 280 },
-  { key: 'ghichu', label: 'Ghi chú', type: 'text', width: 260 },
-  { key: 'phutrach', label: 'Phụ trách', type: 'person', width: 140 },
-  { key: 'han', label: 'Hạn', type: 'date', width: 120 },
-  { key: 'trangthai', label: 'Trạng thái', type: 'select', options: STATUS, width: 120 },
-];
+import { PROGRESS_NAME, STATUS, STEPS, PROGRESS_COLUMNS } from './templates.js';
 
 export function mountDashboard(el) {
   const offs = [];
@@ -38,7 +17,7 @@ export function mountDashboard(el) {
     h('div', { class: 'hero' },
       h('div', {}, h('h1', {}, `Xin chào, ${me?.display_name || ''} 👋`), h('p', {}, 'Đồ án Kinh tế & Tổ chức sản xuất in · Đơn hàng: Hộp kem dưỡng 50.000 hộp & Sách khâu chỉ 3.000 cuốn')),
       h('div', { class: 'row' }, h('a', { class: 'btn', href: store.folders[0] ? `#/f/${store.folders[0].id}` : '#/' }, '📂 Mở thư mục'))),
-    db.demo ? h('div', { class: 'demo-note', style: { marginTop: '14px' } }, h('b', {}, 'Đang ở chế độ demo. '), 'Dữ liệu chỉ lưu trên trình duyệt này. Điền SUPABASE_URL và SUPABASE_ANON_KEY trong js/config.js để cả nhóm dùng chung.') : null,
+    db.demo ? h('div', { class: 'demo-note', style: { marginTop: '14px' } }, h('b', {}, 'Bản xem thử. '), 'Dữ liệu mẫu chỉ lưu trên trình duyệt của bạn. Bấm “▶ Mô phỏng bạn cùng nhóm” ở thanh trên để xem Minh Anh và Quốc Bảo sửa bảng, gõ ghi chú, kéo bảng trắng, upload file theo thời gian thực. Muốn làm lại từ đầu: Hồ sơ → Đặt lại dữ liệu mẫu.') : null,
     statsBox,
     h('div', { class: 'dash-grid' }, progBox, h('div', { style: { display: 'grid', gap: '16px', alignContent: 'start' } }, teamBox, feedBox)));
 

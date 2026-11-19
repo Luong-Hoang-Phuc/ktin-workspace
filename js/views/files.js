@@ -1,6 +1,6 @@
 import db, { logActivity } from '../db.js';
 import { store, on, nameOf, profileOf } from '../store.js';
-import { h, fmtSize, fmtTime, fileIcon, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill } from '../ui.js';
+import { h, fmtSize, fmtTime, fileIcon, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill, downloadNote } from '../ui.js';
 
 const safeKey = (name) => name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-80);
 const rid = () => Math.random().toString(36).slice(2, 10);
@@ -125,11 +125,12 @@ export function mountFiles(el, { folder }) {
   async function download(f, path = f.storage_path) {
     try {
       const url = await db.fileUrl(path, f.name);
-      const a = h('a', { href: url, download: f.name }); document.body.append(a); a.click(); a.remove();
+      const a = h('a', { href: url, download: f.name }); document.body.append(a); a.click(); a.remove(); downloadNote();
     } catch (e) { toastErr(e); }
   }
   async function open(f) {
-    if (!f.storage_path && f.external_url) { window.open(f.external_url, '_blank', 'noopener'); return; }
+    if (!f.storage_path && f.external_url) { const a = h('a', { href: f.external_url, target: '_blank', rel: 'noopener' }); document.body.append(a); a.click(); a.remove(); return; }
+    if (db.demo) { toast('Bản xem thử dùng tệp mẫu nên không mở xem được. Bản chính sẽ xem nhanh PDF, ảnh và file Office.'); return; }
     try {
       if (/^image\/|pdf/.test(f.mime || '') || /\.(png|jpe?g|gif|webp|svg|pdf)$/i.test(f.name)) {
         const url = await db.fileUrl(f.storage_path);

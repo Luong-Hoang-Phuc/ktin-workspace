@@ -1,6 +1,6 @@
 import db, { logActivity } from '../db.js';
 import { store, nameOf } from '../store.js';
-import { h, fmtTime, toastErr, confirmBox, debounce, throttle, miniMarkdown, popMenu, fill } from '../ui.js';
+import { h, fmtTime, toastErr, confirmBox, debounce, throttle, miniMarkdown, popMenu, fill, downloadNote } from '../ui.js';
 
 const TEMPLATES = {
   'Ghi chú trống': '',
@@ -41,7 +41,7 @@ const TEMPLATES = {
 };
 
 export function mountNotes(el, { folder, sub, go }) {
-  let notes = [], cur = null, mode = localStorage.getItem('ktin-note-mode') || 'split';
+  let notes = [], cur = null, mode = 'split'; try { mode = localStorage.getItem('ktin-note-mode') || 'split'; } catch {}
   let dirty = false, lastLocalType = 0;
   const list = h('div', { class: 'note-list' });
   const edit = h('div', { class: 'note-edit' });
@@ -69,12 +69,12 @@ export function mountNotes(el, { folder, sub, go }) {
     statusEl = h('span', { class: 'saved' }, `Lưu lúc ${fmtTime(cur.updated_at)} bởi ${nameOf(cur.updated_by)}`);
     typingEl = h('span', { class: 'typing' });
     areaEl = h('div', { class: 'note-area' }, textEl, prevEl);
-    const modeBtn = (m, label) => h('button', { class: `btn btn-sm ${mode === m ? 'btn-primary' : ''}`, onclick: () => { mode = m; localStorage.setItem('ktin-note-mode', m); renderEditor(); } }, label);
+    const modeBtn = (m, label) => h('button', { class: `btn btn-sm ${mode === m ? 'btn-primary' : ''}`, onclick: () => { mode = m; try { localStorage.setItem('ktin-note-mode', m); } catch {} renderEditor(); } }, label);
     fill(edit, 
       h('div', { class: 'note-bar' }, titleEl, typingEl, statusEl,
         modeBtn('edit', 'Soạn'), modeBtn('split', 'Chia đôi'), modeBtn('view', 'Xem'),
         h('button', { class: 'icon-btn', title: 'Tuỳ chọn', onclick: (e) => popMenu(e.currentTarget, [
-          { icon: '⬇️', label: 'Tải về .md', run: () => { const a = h('a', { href: URL.createObjectURL(new Blob([textEl.value], { type: 'text/markdown' })), download: (titleEl.value || 'ghi-chu') + '.md' }); a.click(); } },
+          { icon: '⬇️', label: 'Tải về .md', run: () => { const a = h('a', { href: URL.createObjectURL(new Blob([textEl.value], { type: 'text/markdown' })), download: (titleEl.value || 'ghi-chu') + '.md' }); a.click(); downloadNote(); } },
           { icon: '📋', label: 'Sao chép nội dung', run: () => navigator.clipboard?.writeText(textEl.value) },
           '-',
           { icon: '🗑️', label: 'Xoá ghi chú', danger: true, run: remove },

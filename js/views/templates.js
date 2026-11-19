@@ -90,3 +90,26 @@ export const TABLE_TEMPLATES = {
     ],
   },
 };
+
+export const PROGRESS_NAME = 'Tiến độ đồ án';
+export const STATUS = ['Chưa làm', 'Đang làm', 'Chờ duyệt', 'Xong'];
+export const STEPS = [
+  ['Xác định phương án nhà máy & CSDL', 'Quy trình, công nghệ – thiết bị, CSDL máy, vật tư, đơn giá'],
+  ['Xác định thông số kỹ thuật sản phẩm', 'Hộp và sách: cấu trúc, kích thước, vật liệu, màu in, GCBM'],
+  ['Lập phương án sản xuất', 'Khổ giấy, layout, cách in, khuôn GCBM, khuôn bế, chọn máy'],
+  ['Tính khối lượng công việc', 'Theo đơn vị năng suất từng máy, có bù hao'],
+  ['Dự trù vật tư', 'Giấy, kẽm, mực, màng, verni, nhũ, keo, chỉ…'],
+  ['Tính thời gian sản xuất', 'T máy chạy, canh bài, ngừng CN/KT/TCSX'],
+  ['Tính giá thành theo khoản mục', 'NVL, lương, BH, khấu hao, SXC, QLDN, bán hàng'],
+  ['Lập kế hoạch sản xuất', 'Lịch trình, Gantt, theo dõi tiến độ'],
+  ['Hoàn thiện báo cáo Word & file Excel', 'Ghép chương, rà soát số liệu, định dạng'],
+];
+export const PROGRESS_COLUMNS = [
+  { key: 'buoc', label: 'Bước', type: 'text', width: 60 },
+  { key: 'noidung', label: 'Nội dung', type: 'text', width: 280 },
+  { key: 'ghichu', label: 'Ghi chú', type: 'text', width: 260 },
+  { key: 'phutrach', label: 'Phụ trách', type: 'person', width: 140 },
+  { key: 'han', label: 'Hạn', type: 'date', width: 120 },
+  { key: 'trangthai', label: 'Trạng thái', type: 'select', options: STATUS, width: 120 },
+];
+

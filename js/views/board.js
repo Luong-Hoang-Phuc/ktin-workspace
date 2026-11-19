@@ -1,6 +1,6 @@
 import db, { logActivity } from '../db.js';
 import { store } from '../store.js';
-import { h, toastErr, prompt, confirmBox, throttle, popMenu, esc, fill } from '../ui.js';
+import { h, toastErr, prompt, confirmBox, throttle, popMenu, esc, fill, downloadNote } from '../ui.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const S = (tag, attrs = {}) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, v); return e; };
@@ -310,7 +310,7 @@ export function mountBoards(el, { folder, sub, go }) {
     clone.setAttribute('viewBox', `${x0} ${y0} ${x1 - x0} ${y1 - y0}`); clone.setAttribute('width', x1 - x0); clone.setAttribute('height', y1 - y0);
     clone.querySelector('g').removeAttribute('transform');
     clone.setAttribute('xmlns', NS);
-    const a = h('a', { href: URL.createObjectURL(new Blob([clone.outerHTML], { type: 'image/svg+xml' })), download: (board?.name || 'bang-trang') + '.svg' }); a.click();
+    const a = h('a', { href: URL.createObjectURL(new Blob([clone.outerHTML], { type: 'image/svg+xml' })), download: (board?.name || 'bang-trang') + '.svg' }); a.click(); downloadNote();
   }
 
   (async () => {

@@ -1,6 +1,6 @@
 import db, { logActivity } from '../db.js';
 import { store, on, nameOf } from '../store.js';
-import { h, toast, toastErr, prompt, confirmBox, modal, popMenu, fill } from '../ui.js';
+import { h, toast, toastErr, prompt, confirmBox, modal, popMenu, fill, downloadNote } from '../ui.js';
 import { TABLE_TEMPLATES } from './templates.js';
 
 const TYPES = { text: 'Văn bản', number: 'Số', select: 'Lựa chọn', person: 'Thành viên', date: 'Ngày', check: 'Hộp kiểm' };
@@ -158,7 +158,7 @@ export function mountTables(el, { folder, sub, go }) {
     const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
     const disp = (r, c) => { const v = r.cells?.[c.key]; if (c.type === 'person') return nameOf(v); if (c.type === 'check') return v ? 'x' : ''; return v ?? ''; };
     const csv = [cols.map(c => q(c.label)).join(','), ...rows.map(r => cols.map(c => q(disp(r, c))).join(','))].join('\r\n');
-    const a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })), download: cur.name + '.csv' }); a.click();
+    const a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })), download: cur.name + '.csv' }); a.click(); downloadNote();
   }
   function importCsv() {
     const inp = h('input', { type: 'file', accept: '.csv,text/csv', onchange: async (e) => {

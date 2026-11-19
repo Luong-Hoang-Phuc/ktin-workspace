@@ -65,11 +65,12 @@ async function start(user) {
 // =====================================================================
 function renderLogin() {
   let mode = 'otp';
-  const email = h('input', { class: 'input', type: 'email', placeholder: 'ten@email.com', autocomplete: 'email' });
+  const email = h('input', { class: 'input', type: 'email', placeholder: 'ten@email.com', autocomplete: 'email', value: db.demo ? 'ban@nhom-ktin.vn' : '' });
   const pass = h('input', { class: 'input', type: 'password', placeholder: 'Mật khẩu', autocomplete: 'current-password' });
+  const nick = h('input', { class: 'input', placeholder: 'VD: Hoàng Phúc', value: 'Hoàng Phúc' });
   const passField = h('label', { class: 'field', style: { display: 'none' } }, h('span', {}, 'Mật khẩu'), pass);
   const msg = h('div', { class: 'small muted', style: { minHeight: '20px', marginTop: '10px' } });
-  const btn = h('button', { class: 'btn btn-primary', style: { width: '100%', justifyContent: 'center', padding: '10px' } }, 'Gửi link đăng nhập qua email');
+  const btn = h('button', { class: 'btn btn-primary', style: { width: '100%', justifyContent: 'center', padding: '10px' } }, db.demo ? 'Đăng nhập' : 'Gửi link đăng nhập qua email');
   const tabs = h('div', { class: 'tabs-mini' });
   const setMode = (m) => {
     mode = m;
@@ -83,7 +84,8 @@ function renderLogin() {
     if (!/^\S+@\S+\.\S+$/.test(e)) { msg.textContent = 'Email chưa đúng định dạng.'; return; }
     btn.disabled = true; msg.textContent = 'Đang xử lý…';
     try {
-      if (db.demo || mode === 'pw') { await db.signInPassword(e, pass.value); }
+      if (db.demo) { await db.signInPassword(e, nick.value.trim()); }
+      else if (mode === 'pw') { await db.signInPassword(e, pass.value); }
       else { await db.signInOtp(e); msg.innerHTML = '✅ Đã gửi link. Mở email và bấm vào link để vào workspace.'; }
     } catch (err) {
       msg.textContent = /not allowed|Signups not allowed|not found/i.test(err.message) ? 'Email này chưa được mời vào nhóm. Nhờ trưởng nhóm mời trong Supabase.' : (err.message || 'Có lỗi xảy ra');
@@ -104,7 +106,8 @@ function renderLogin() {
     h('div', { class: 'login-box' }, h('div', { class: 'login-card' },
       h('h2', {}, 'Đăng nhập'),
       h('p', { class: 'muted', style: { margin: 0 } }, 'Dùng email đã được mời vào nhóm.'),
-      db.demo ? h('div', { class: 'demo-note', style: { marginTop: '16px' } }, h('b', {}, 'Chế độ demo: '), 'chưa cấu hình Supabase nên dữ liệu chỉ lưu trên trình duyệt này. Nhập email bất kỳ để xem thử. Mở thêm tab khác với email khác để thử realtime.') : tabs,
+      db.demo ? h('div', { class: 'demo-note', style: { marginTop: '16px' } }, h('b', {}, 'Bản xem thử: '), 'nhập email bất kỳ rồi bấm Đăng nhập. Đã có sẵn dữ liệu mẫu và 2 bạn cùng nhóm giả lập (Minh Anh, Quốc Bảo). Dữ liệu chỉ lưu trên trình duyệt của bạn.') : tabs,
+      db.demo ? h('label', { class: 'field' }, h('span', {}, 'Tên hiển thị'), nick) : null,
       h('label', { class: 'field' }, h('span', {}, 'Email'), email),
       db.demo ? null : passField,
       btn, msg))));
@@ -132,7 +135,8 @@ function renderTop() {
     h('button', { class: 'icon-btn only-mobile', onclick: () => shellEl.classList.toggle('side-open') }, '☰'),
     h('a', { class: 'brand', href: '#/' }, h('div', { class: 'brand-logo' }, 'K'), h('div', {}, APP_NAME, h('small', {}, APP_SUBTITLE))),
     h('div', { class: 'grow' }),
-    db.demo ? h('span', { class: 'demo-pill', title: 'Chưa cấu hình Supabase – dữ liệu chỉ lưu trên trình duyệt này' }, 'Chế độ demo') : null,
+    db.demo ? h('span', { class: 'demo-pill', title: 'Bản xem thử – dữ liệu chỉ lưu trên trình duyệt này' }, 'Bản xem thử') : null,
+    db.demo ? h('button', { class: `btn btn-sm ${sim?.isRunning() ? 'btn-primary' : ''}`, title: 'Giả lập 2 bạn cùng nhóm đang làm việc để xem luồng realtime', onclick: toggleSim }, sim?.isRunning() ? '⏸ Dừng mô phỏng' : '▶ Mô phỏng bạn cùng nhóm') : null,
     h('div', { class: 'row small muted' }, others.length ? `${others.length} người khác đang online` : 'Chỉ mình bạn đang online'),
     h('div', { class: 'online' }, store.online.map(p => {
       const f = p.folderId ? folderOf(p.folderId) : null;
@@ -144,18 +148,25 @@ function renderTop() {
   );
 }
 
+let sim = null;
+async function toggleSim() {
+  sim ||= await import('./demo-sim.js');
+  if (sim.isRunning()) { sim.stop(); renderTop(); }
+  else sim.start(renderTop);
+}
+
 function renderSidebar() {
   if (!sideEl) return;
   const r = store.route;
   const kids = (pid) => store.folders.filter(f => (f.parent_id || null) === pid);
-  const expanded = JSON.parse(sessionStorage.getItem('ktin-exp') || '{}');
+  let expanded = {}; try { expanded = JSON.parse(sessionStorage.getItem('ktin-exp') || '{}'); } catch {}
   const activePath = r.view === 'folder' ? folderPath(r.id).map(f => f.id) : [];
   const tree = (pid, depth) => kids(pid).map(f => {
     const ch = kids(f.id);
     const open = expanded[f.id] ?? activePath.includes(f.id);
     const here = store.online.filter(p => p.folderId === f.id && p.id !== store.user.id);
     const item = h('div', { class: `tree-item ${r.view === 'folder' && r.id === f.id ? 'on' : ''}`, style: { paddingLeft: 8 + depth * 14 + 'px' }, onclick: () => { location.hash = `#/f/${f.id}`; shellEl.classList.remove('side-open'); } },
-      h('span', { class: 'twisty', onclick: (e) => { e.stopPropagation(); expanded[f.id] = !open; sessionStorage.setItem('ktin-exp', JSON.stringify(expanded)); renderSidebar(); } }, ch.length ? (open ? '▾' : '▸') : ''),
+      h('span', { class: 'twisty', onclick: (e) => { e.stopPropagation(); expanded[f.id] = !open; try { sessionStorage.setItem('ktin-exp', JSON.stringify(expanded)); } catch {} renderSidebar(); } }, ch.length ? (open ? '▾' : '▸') : ''),
       h('span', { class: 'ic' }, f.icon || '📁'),
       h('span', { class: 'nm', title: f.name }, f.name),
       here.length ? h('span', { class: 'here' }, here.slice(0, 3).map(p => avatar({ display_name: p.name, color: p.color }, 18))) : null,
@@ -232,7 +243,8 @@ async function openProfile() {
     h('label', { class: 'field' }, h('span', {}, 'Tên hiển thị'), name),
     h('div', { class: 'field' }, h('span', {}, 'Màu của bạn (hiện trên avatar, bảng trắng)'), colors),
     db.demo ? null : h('label', { class: 'field' }, h('span', {}, 'Đặt mật khẩu (để đăng nhập không cần link email)'), pw));
-  const r = await modal('Hồ sơ của bạn', body, [{ label: 'Đăng xuất', value: 'out', danger: true }, { label: 'Lưu', value: 'save', primary: true }]);
+  const r = await modal('Hồ sơ của bạn', body, [db.demo ? { label: 'Đặt lại dữ liệu mẫu', value: 'reset' } : null, { label: 'Đăng xuất', value: 'out', danger: true }, { label: 'Lưu', value: 'save', primary: true }].filter(Boolean));
+  if (r === 'reset' && await confirmBox('Đặt lại bản xem thử?', 'Xoá mọi thay đổi bạn đã làm và nạp lại dữ liệu mẫu ban đầu.')) { db._sim.reset(); location.hash = ''; location.reload(); return; }
   if (r === 'out') { store.presence?.leave(); await db.signOut(); location.hash = ''; location.reload(); }
   if (r === 'save') {
     try {

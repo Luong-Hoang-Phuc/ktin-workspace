@@ -269,3 +269,4 @@ tr:hover .row-del { visibility: visible; }
 a.btn{text-decoration:none;color:inherit}
 .wb-canvas { user-select: none; -webkit-user-select: none; }
 table.grid td .cell { line-height: 19px; }
+.hero .btn { color: var(--ink); }
