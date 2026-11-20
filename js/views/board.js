@@ -231,9 +231,10 @@ export function mountBoards(el, { folder, sub, go }) {
     const it = sel ? items.get(sel) : null;
     const on = !!(it && BOX.has(it.kind) && selSet.size === 1);
     fmt.classList.toggle('off', !on);
+    fmt.style.display = '';
     if (it?.kind === 'table' && selSet.size === 1) { fmt.classList.remove('off'); fill(fmt, tableBar(it)); return; }
     if (!on && [...selSet].filter(id => RECT.has(items.get(id)?.kind)).length >= 2) { fmt.classList.remove('off'); fill(fmt, alignBar()); return; }
-    if (!on) { fill(fmt, h('span', { class: 'small muted' }, 'Chọn một ghi chú, chữ, khung hoặc elip để chỉnh kiểu chữ.')); return; }
+    if (!on) { fill(fmt); fmt.style.display = 'none'; return; }   // không có gì để chỉnh → ẩn hẳn thanh này cho rộng chỗ vẽ
     const st = styleOf(it);
     const set = (p) => patch(it.id, p, true).then(() => renderFmt());
     const tog = (k, label, title, css) => h('button', { class: `wb-tool fmt-b ${st[k] ? 'on' : ''}`, title, style: css, onclick: () => set({ [k]: !st[k] }) }, label);
