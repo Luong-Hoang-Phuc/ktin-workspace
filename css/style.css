@@ -689,3 +689,24 @@ table.grid th.fx { background: #dccbab; }
 .chat-typing { min-height: 18px; padding-left: 4px; }
 .chat-compose { display: flex; gap: 8px; align-items: flex-end; background: var(--paper); border: 2px solid var(--ink); border-radius: 8px; padding: 6px; }
 .chat-in { border: 0 !important; resize: none; background: transparent; min-height: 38px; max-height: 160px; box-shadow: none !important; }
+
+/* ---------- Ảnh trong tin nhắn ---------- */
+.chat { position: relative; }
+.chat.drop::after { content: 'Thả ảnh vào đây để gửi'; position: absolute; inset: 10px; display: grid; place-items: center; background: rgba(244, 234, 214, .92); border: 2px solid var(--rd); border-radius: 10px; font-weight: 700; color: var(--rd); z-index: 5; pointer-events: none; }
+.chat-attach { font-size: 19px; width: 38px; height: 38px; flex: none; align-self: flex-end; }
+.chat-tray { display: none; gap: 8px; flex-wrap: wrap; padding: 6px 2px 8px; }
+.chat-tray.on { display: flex; }
+.tray-it { position: relative; width: 72px; height: 72px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.tray-it img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tray-x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(43, 30, 18, .8); color: #fff; font-size: 14px; line-height: 20px; padding: 0; cursor: pointer; }
+.msg-imgs { display: grid; gap: 4px; max-width: 360px; }
+.msg-imgs.n2 { grid-template-columns: repeat(2, 1fr); }
+.msg-imgs.n3 { grid-template-columns: repeat(3, 1fr); max-width: 420px; }
+.msg.mine .msg-imgs { justify-self: end; }
+.msg-img { padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; cursor: zoom-in; display: block; }
+.msg-img img { display: block; width: 100%; max-height: 320px; object-fit: cover; background: #f1e7d4; min-height: 60px; }
+.msg-imgs.n2 .msg-img img, .msg-imgs.n3 .msg-img img { aspect-ratio: 1 / 1 !important; height: auto; }
+.img-view { position: fixed; inset: 0; background: rgba(20, 14, 8, .88); z-index: 1000; display: grid; grid-template-rows: auto 1fr; place-items: center; padding: 12px; }
+.img-view-bar { justify-self: stretch; display: flex; gap: 8px; align-items: center; justify-content: flex-end; color: #f4ead6; padding-bottom: 10px; }
+.img-view-bar .small { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.img-view img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border-radius: 4px; box-shadow: 0 8px 40px rgba(0, 0, 0, .5); }

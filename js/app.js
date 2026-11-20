@@ -61,7 +61,8 @@ async function start(user, fresh = false) {
     if (e.type !== 'INSERT' || e.new.user_id === user.id || store.route.view === 'chat') return;
     store.unread = (store.unread || 0) + 1; renderSide();
     const who = store.profiles.get(e.new.user_id)?.display_name || 'Ai đó';
-    toast(`💬 ${who}: ${e.new.body.length > 60 ? e.new.body.slice(0, 60) + '…' : e.new.body}`);
+    const txt = e.new.body || (e.new.attachments?.length ? `🖼 đã gửi ${e.new.attachments.length > 1 ? e.new.attachments.length + ' ảnh' : 'một ảnh'}` : '');
+    toast(`💬 ${who}: ${txt.length > 60 ? txt.slice(0, 60) + '…' : txt}`);
   });
 
   renderShell();
