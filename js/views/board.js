@@ -86,11 +86,101 @@ export function mountBoards(el, { folder, sub, go }) {
     renderFmt();
     fill(zoomBox, h('button', { class: 'icon-btn', onclick: () => zoomAt(1 / 1.2) }, '－'), h('span', { class: 'small', style: { padding: '4px 6px', minWidth: '44px', textAlign: 'center' } }, Math.round(view.z * 100) + '%'), h('button', { class: 'icon-btn', onclick: () => zoomAt(1.2) }, '＋'), h('button', { class: 'icon-btn', title: 'Vừa khung', onclick: fit }, '⤢'));
   }
+  // ---------- căn hàng ----------
+  const rectOf = (d) => ({ x: Math.min(d.x, d.x + d.w), y: Math.min(d.y, d.y + d.h), w: Math.abs(d.w), h: Math.abs(d.h) });
+  function snapMove(dr, dx, dy) {
+    const moving = [...dr.origs].filter(([id]) => RECT.has(items.get(id)?.kind)).map(([, o]) => rectOf(o));
+    if (!moving.length) return { dx, dy, guides: [] };
+    const x0 = Math.min(...moving.map(b => b.x)) + dx, y0 = Math.min(...moving.map(b => b.y)) + dy;
+    const x1 = Math.max(...moving.map(b => b.x + b.w)) + dx, y1 = Math.max(...moving.map(b => b.y + b.h)) + dy;
+    const others = [...items.values()].filter(it => RECT.has(it.kind) && !dr.origs.has(it.id) && it.id !== 'temp').map(bbox);
+    const T = 6 / view.z;
+    const mx = [x0, (x0 + x1) / 2, x1], my = [y0, (y0 + y1) / 2, y1];
+    let bx = null, by = null;
+    for (const o of others) {
+      for (const tx of [o.x, o.x + o.w / 2, o.x + o.w]) for (const m of mx) { const d = tx - m; if (Math.abs(d) <= T && (!bx || Math.abs(d) < Math.abs(bx.d))) bx = { d }; }
+      for (const ty of [o.y, o.y + o.h / 2, o.y + o.h]) for (const m of my) { const d = ty - m; if (Math.abs(d) <= T && (!by || Math.abs(d) < Math.abs(by.d))) by = { d }; }
+    }
+    const sdx = dx + (bx ? bx.d : 0), sdy = dy + (by ? by.d : 0);
+    const guides = [];
+    const X0 = x0 + (bx ? bx.d : 0), X1 = x1 + (bx ? bx.d : 0), Y0 = y0 + (by ? by.d : 0), Y1 = y1 + (by ? by.d : 0);
+    const E = 0.5 / view.z;
+    if (bx) for (const gx of [X0, (X0 + X1) / 2, X1]) {
+      const hits = others.filter(o => [o.x, o.x + o.w / 2, o.x + o.w].some(v => Math.abs(v - gx) < E));
+      if (hits.length) guides.push({ x1: gx, x2: gx, y1: Math.min(Y0, ...hits.map(o => o.y)) - 12 / view.z, y2: Math.max(Y1, ...hits.map(o => o.y + o.h)) + 12 / view.z });
+    }
+    if (by) for (const gy of [Y0, (Y0 + Y1) / 2, Y1]) {
+      const hits = others.filter(o => [o.y, o.y + o.h / 2, o.y + o.h].some(v => Math.abs(v - gy) < E));
+      if (hits.length) guides.push({ y1: gy, y2: gy, x1: Math.min(X0, ...hits.map(o => o.x)) - 12 / view.z, x2: Math.max(X1, ...hits.map(o => o.x + o.w)) + 12 / view.z });
+    }
+    return { dx: sdx, dy: sdy, guides };
+  }
+  // Dời một mục (và nội dung nếu là nhóm) đi (dx, dy); trả về danh sách id đã đổi
+  function shiftItem(it, dx, dy, skip, out) {
+    const d = it.data;
+    if (RECT.has(it.kind)) Object.assign(d, { x: Math.round(d.x + dx), y: Math.round(d.y + dy) });
+    else if (it.kind === 'arrow') Object.assign(d, d.from ? {} : { x1: d.x1 + dx, y1: d.y1 + dy }, d.to ? {} : { x2: d.x2 + dx, y2: d.y2 + dy });
+    else Object.assign(d, { dx: (d.dx || 0) + dx, dy: (d.dy || 0) + dy });
+    out.add(it.id);
+  }
+  function alignSel(mode) {
+    const sels = [...selSet].map(id => items.get(id)).filter(it => it && RECT.has(it.kind));
+    if (sels.length < 2) return;
+    const bs = new Map(sels.map(it => [it.id, bbox(it)]));
+    // nội dung các nhóm được chọn (đi theo nhóm), tính trước khi dời
+    const inner = new Map(sels.filter(it => it.kind === 'group').map(g => [g.id, contents(g).filter(c => !selSet.has(c.id))]));
+    const all = [...bs.values()];
+    const L = Math.min(...all.map(b => b.x)), R = Math.max(...all.map(b => b.x + b.w)), Tp = Math.min(...all.map(b => b.y)), Bt = Math.max(...all.map(b => b.y + b.h));
+    const moves = new Map();
+    if (mode === 'dh' || mode === 'dv') {
+      if (sels.length < 3) return;
+      const hz = mode === 'dh';
+      const sorted = [...sels].sort((a, b) => hz ? bs.get(a.id).x + bs.get(a.id).w / 2 - bs.get(b.id).x - bs.get(b.id).w / 2 : bs.get(a.id).y + bs.get(a.id).h / 2 - bs.get(b.id).y - bs.get(b.id).h / 2);
+      const total = sorted.reduce((t, it) => t + (hz ? bs.get(it.id).w : bs.get(it.id).h), 0);
+      const gap = ((hz ? R - L : Bt - Tp) - total) / (sorted.length - 1);
+      let cur = hz ? L : Tp;
+      for (const it of sorted) { const b = bs.get(it.id); moves.set(it.id, hz ? [cur - b.x, 0] : [0, cur - b.y]); cur += (hz ? b.w : b.h) + gap; }
+    } else {
+      for (const it of sels) {
+        const b = bs.get(it.id);
+        const dx = mode === 'l' ? L - b.x : mode === 'c' ? (L + R) / 2 - (b.x + b.w / 2) : mode === 'r' ? R - (b.x + b.w) : 0;
+        const dy = mode === 't' ? Tp - b.y : mode === 'm' ? (Tp + Bt) / 2 - (b.y + b.h / 2) : mode === 'b' ? Bt - (b.y + b.h) : 0;
+        moves.set(it.id, [dx, dy]);
+      }
+    }
+    const changed = new Set();
+    for (const it of sels) {
+      const [dx, dy] = moves.get(it.id) || [0, 0]; if (!dx && !dy) continue;
+      shiftItem(it, dx, dy, null, changed);
+      (inner.get(it.id) || []).forEach(c => shiftItem(c, dx, dy, null, changed));
+    }
+    redraw();
+    changed.forEach(id => { const it = items.get(id); if (it) { if (it.kind === 'arrow') freezeArrow(it.data); patch(id, it.data); } });
+  }
+  function alignBar() {
+    const n = [...selSet].filter(id => RECT.has(items.get(id)?.kind)).length;
+    const I = (body) => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">${body}</svg>`;
+    const B = (mode, title, icon, dis) => h('button', { class: 'wb-tool fmt-i', title, disabled: dis, onclick: () => alignSel(mode), html: I(icon) });
+    return [h('span', { class: 'fmt-lb' }, `Căn hàng · ${n} mục`),
+      B('l', 'Căn trái', '<path d="M2 1.5v13"/><rect x="4" y="3.5" width="9" height="3" rx=".6"/><rect x="4" y="9.5" width="5.5" height="3" rx=".6"/>'),
+      B('c', 'Căn giữa (theo chiều ngang)', '<path d="M8 1.5v13"/><rect x="2.5" y="3.5" width="11" height="3" rx=".6"/><rect x="4.5" y="9.5" width="7" height="3" rx=".6"/>'),
+      B('r', 'Căn phải', '<path d="M14 1.5v13"/><rect x="3" y="3.5" width="9" height="3" rx=".6"/><rect x="6.5" y="9.5" width="5.5" height="3" rx=".6"/>'),
+      h('span', { class: 'wb-sep' }),
+      B('t', 'Căn trên', '<path d="M1.5 2h13"/><rect x="3.5" y="4" width="3" height="9" rx=".6"/><rect x="9.5" y="4" width="3" height="5.5" rx=".6"/>'),
+      B('m', 'Căn giữa (theo chiều dọc)', '<path d="M1.5 8h13"/><rect x="3.5" y="2.5" width="3" height="11" rx=".6"/><rect x="9.5" y="4.5" width="3" height="7" rx=".6"/>'),
+      B('b', 'Căn dưới', '<path d="M1.5 14h13"/><rect x="3.5" y="3" width="3" height="9" rx=".6"/><rect x="9.5" y="6.5" width="3" height="5.5" rx=".6"/>'),
+      h('span', { class: 'wb-sep' }),
+      B('dh', 'Giãn đều theo chiều ngang (từ 3 mục)', '<path d="M1.5 2v12M14.5 2v12"/><rect x="6.5" y="4.5" width="3" height="7" rx=".6"/>', n < 3),
+      B('dv', 'Giãn đều theo chiều dọc (từ 3 mục)', '<path d="M2 1.5h12M2 14.5h12"/><rect x="4.5" y="6.5" width="7" height="3" rx=".6"/>', n < 3),
+      h('span', { class: 'small muted', style: { marginLeft: '8px' } }, 'Kéo gần mục khác sẽ tự hút thẳng hàng · giữ Alt để tắt')];
+  }
+
   // ---------- thanh định dạng chữ ----------
   function renderFmt() {
     const it = sel ? items.get(sel) : null;
     const on = !!(it && BOX.has(it.kind) && selSet.size === 1);
     fmt.classList.toggle('off', !on);
+    if (!on && [...selSet].filter(id => RECT.has(items.get(id)?.kind)).length >= 2) { fmt.classList.remove('off'); fill(fmt, alignBar()); return; }
     if (!on) { fill(fmt, h('span', { class: 'small muted' }, 'Chọn một ghi chú, chữ, khung hoặc elip để chỉnh kiểu chữ.')); return; }
     const st = styleOf(it);
     const set = (p) => patch(it.id, p, true).then(() => renderFmt());
@@ -241,6 +331,7 @@ export function mountBoards(el, { folder, sub, go }) {
   function redraw() {
     fill(world, ...[...items.values()].sort((a, b) => (a.z || 0) - (b.z || 0)).map(drawItem));
     if (drag?.hover && items.get(drag.hover)) { const b = bbox(items.get(drag.hover)); world.append(S('rect', { x: b.x - 6, y: b.y - 6, width: b.w + 12, height: b.h + 12, rx: 8, fill: 'none', stroke: '#059669', 'stroke-width': 2.5 / view.z, 'pointer-events': 'none' })); }
+    if (drag?.guides?.length) for (const gd of drag.guides) world.append(S('line', { ...gd, stroke: '#e11d74', 'stroke-width': 1.2 / view.z, 'pointer-events': 'none' }));
     if (drag?.mode === 'marquee') { const m = drag.rect; world.append(S('rect', { x: m.x, y: m.y, width: m.w, height: m.h, fill: 'rgba(37,99,235,.08)', stroke: '#2563eb', 'stroke-width': 1 / view.z })); }
     if (!items.size && board) {
       const t = S('text', { x: 40, y: 60, fill: '#94a3b8', 'font-size': 16 }); t.textContent = 'Bảng trống – chọn 🟨 Ghi chú rồi nhấp vào bảng để bắt đầu.'; world.append(t);
@@ -326,8 +417,12 @@ export function mountBoards(el, { folder, sub, go }) {
     }
     if (drag.mode === 'move') {
       const list = [];
+      // Tự căn hàng (như Canva): mép/tâm gần khớp với mục khác thì hút vào và hiện đường gióng. Giữ Alt để tắt.
+      const sn = e.altKey ? { dx, dy, guides: [] } : snapMove(drag, dx, dy);
+      drag.guides = sn.guides;
       for (const [id, o] of drag.origs) {
         const it = items.get(id); if (!it) continue;
+        const dx = sn.dx, dy = sn.dy;
         if (RECT.has(it.kind)) Object.assign(it.data, { x: o.x + dx, y: o.y + dy });
         else if (it.kind === 'arrow') Object.assign(it.data, o.from ? {} : { x1: o.x1 + dx, y1: o.y1 + dy }, o.to ? {} : { x2: o.x2 + dx, y2: o.y2 + dy });
         else Object.assign(it.data, { dx: (o.dx || 0) + dx, dy: (o.dy || 0) + dy });
@@ -360,7 +455,7 @@ export function mountBoards(el, { folder, sub, go }) {
     if (dr.mode === 'marquee') { redraw(); renderBar(); return; }
     if (dr.mode === 'move' && dr.moved) for (const id of dr.origs.keys()) { const it = items.get(id); if (it) { if (it.kind === 'arrow') freezeArrow(it.data); patch(id, it.data); } }
     if (dr.mode === 'resize' && dr.moved) { const it = items.get(dr.id); if (it.kind === 'arrow') freezeArrow(it.data); patch(dr.id, it.data); }
-    if (dr.hover) redraw();
+    if (dr.hover || dr.guides?.length) redraw();
     if (dr.mode === 'create') {
       items.delete('temp');
       const d = dr.temp.data;
