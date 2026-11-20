@@ -7,6 +7,7 @@ import { mountPicker, productThumb } from './views/picker.js';
 import { mountOverview } from './views/dashboard.js';
 import { mountFiles } from './views/files.js';
 import { mountNotes } from './views/notes.js';
+import { mountBoards } from './views/board.js';
 import { mountChat, lastRead } from './views/chat.js';
 import { mountSheets } from './views/sheet.js';
 import { mountFactoryTree, mountMachineTable } from './views/factory.js';
@@ -182,7 +183,7 @@ function renderSide() {
   const ico = (icon, label, opts) => h(opts.href ? 'a' : 'button', { class: `dock-ic ${opts.on ? 'on' : ''}`, href: opts.href, onclick: opts.run, title: label }, h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label), opts.badge ? h('span', { class: 'badge-n' }, opts.badge > 99 ? '99+' : opts.badge) : null);
   const me = store.me;
   const onlineIds = new Set(store.online.map(o => o.id));
-  const where = (id) => { const o = store.online.find(x => x.id === id); if (!o) return 'Ngoại tuyến'; if (o.section === 'chat') return 'Đang ở Tin nhắn'; const pp = productOf(o.productId); return pp ? `${pp.name}${o.sectionLabel ? ' › ' + o.sectionLabel : ''}` : o.docs ? 'Tài liệu' : 'Trực tuyến'; };
+  const where = (id) => { const o = store.online.find(x => x.id === id); if (!o) return 'Ngoại tuyến'; if (o.section === 'chat') return 'Đang ở Tin nhắn'; if (o.section === 'board') return 'Đang ở Bảng trắng'; const pp = productOf(o.productId); return pp ? `${pp.name}${o.sectionLabel ? ' › ' + o.sectionLabel : ''}` : o.docs ? 'Tài liệu' : 'Trực tuyến'; };
   const team = [...store.profiles.values()].filter(p => p.id !== store.user.id).sort((a, b) => (onlineIds.has(b.id) - onlineIds.has(a.id)) || (a.display_name || '').localeCompare(b.display_name || ''));
   fill(sideEl,
     h('div', { class: 'side-nav' }, nav),
@@ -191,7 +192,8 @@ function renderSide() {
         ico('✦', 'Canva', { run: openCanva }),
         ico('📁', 'Tài liệu', { href: '#/docs/lecturer', on: r.view === 'docs' }),
         ico('🗄', 'CSDL', { href: dbHref(), on: r.view === 'db' }),
-        ico('💬', 'Tin nhắn', { href: '#/chat', on: r.view === 'chat', badge: store.unread })),
+        ico('💬', 'Tin nhắn', { href: '#/chat', on: r.view === 'chat', badge: store.unread }),
+        ico('✏️', 'Bảng trắng', { href: '#/board', on: r.view === 'board' })),
       h('div', { class: 'dock-me' },
         h('span', { class: 'av-wrap on' }, avatar(me, 32)),
         h('div', { class: 'grow', onclick: openProfile, style: { cursor: 'pointer', minWidth: 0 } }, h('b', {}, me?.display_name || store.user.email), h('small', {}, store.user.email)),
@@ -221,6 +223,7 @@ function openDrawer() {
     item('🗄', 'Cơ sở dữ liệu', () => go(dbHref())),
     item('📁', 'Tài liệu', () => go('#/docs/lecturer')),
     item('💬', 'Tin nhắn', () => go('#/chat'), { right: store.unread ? h('span', { class: 'badge-n' }, store.unread) : null }),
+    item('✏️', 'Bảng trắng nhóm', () => go('#/board')),
     item('✦', 'Canva – mẫu thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn liên kết' }),
     item('✎', 'Sửa liên kết Canva', editCanva),
     h('div', { class: 'dr-sec' }, 'Tài khoản'),
@@ -311,6 +314,10 @@ function route() {
     store.productId = fallbackPid();
     store.route = { view: 'docs', branch: parts[1] === 'team' ? 'team' : 'lecturer' };
     renderDocs();
+  } else if (parts[0] === 'board') {
+    store.productId = fallbackPid();
+    store.route = { view: 'board', sub: parts[1] || null };
+    renderBoard();
   } else if (parts[0] === 'chat') {
     store.productId = fallbackPid();
     store.route = { view: 'chat' };
@@ -376,6 +383,22 @@ async function renderDb(sec) {
     plan: [{ key: 'tree', label: '🌳 Phương án (dạng cây)', mount: (el) => mountPlan(el, { product: p }) }],
   }[sec.key] || [];
   cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [], title: `${secLabel(sec)} – ${sec.company ? 'Cong ty' : p.name}` });
+}
+
+async function renderBoard() {
+  setWhere({ productId: null, section: 'board', sectionLabel: 'Bảng trắng', docs: false, mode: null });
+  const body = h('div', { class: 'tab-body wb-body' });
+  const head = h('div', { class: 'page-head' }, h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, '✏️'), h('h1', { class: 'serif' }, 'Bảng trắng nhóm')));
+  fill(mainEl, h('div', { class: 'page-full' }, head, body));
+  let folder = docsFolder('board');
+  if (!folder) {
+    try {
+      folder = await db.insert('folders', { parent_id: null, product_id: null, section: 'board', name: 'Bảng trắng nhóm', icon: '✏️', position: 3 });
+      if (!store.folders.some(f => f.id === folder.id)) store.folders.push(folder);
+    } catch (e) { toastErr(e); return; }
+  }
+  if (store.route.view !== 'board') return;
+  cleanup = mountBoards(body, { folder, sub: store.route.sub, go: (s) => { history.replaceState(null, '', `#/board${s ? '/' + s : ''}`); store.route.sub = s; } });
 }
 
 function renderChat() {

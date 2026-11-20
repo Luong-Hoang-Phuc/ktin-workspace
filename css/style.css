@@ -318,6 +318,7 @@ a.step-t:hover { color: var(--rd); }
 .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--paper); box-shadow: 0 0 0 1px var(--line); cursor: pointer; display: inline-block; }
 .swatch.on { box-shadow: 0 0 0 2px var(--ink); }
 .wb-canvas { flex: 1; position: relative; overflow: hidden; background-color: #fbf5e8; background-image: radial-gradient(#d6c3a0 1px, transparent 1px); background-size: 22px 22px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.wb-canvas:focus, .wb-canvas:focus-visible { outline: none; }
 .wb-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .wb-canvas.tool-pan { cursor: grab; } .wb-canvas.tool-draw { cursor: crosshair; }
 .wb-item { cursor: move; }
@@ -641,12 +642,12 @@ table.grid th.fx { background: #dccbab; }
 .side-nav { flex: 1; overflow-y: auto; padding: 14px 10px 12px; }
 .nav.back { margin-top: 14px; border: 1px solid var(--line); }
 .side-dock { border-top: 1px solid var(--line); background: rgba(59, 42, 26, .06); padding: 10px 10px 8px; display: grid; gap: 8px; }
-.dock-icons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.dock-icons { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
 .dock-ic { position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 2px 5px; border-radius: 5px; border: 1.5px solid transparent; background: none; cursor: pointer; color: var(--ink); text-decoration: none; font: inherit; }
 .dock-ic:hover { background: rgba(198, 156, 109, .35); }
 .dock-ic.on { background: var(--ink); color: var(--cream); }
 .dock-ic .di { font-size: 17px; line-height: 1.1; }
-.dock-ic .dl { font-size: 11px; font-weight: 700; }
+.dock-ic .dl { font-size: 10.5px; font-weight: 700; white-space: nowrap; letter-spacing: -.2px; }
 .badge-n { position: absolute; top: 1px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--rd); color: #fff; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--side); }
 .dr-item .badge-n { position: static; border: 0; }
 .dock-me { display: flex; align-items: center; gap: 9px; background: var(--ink); color: var(--cream); border-radius: 6px; padding: 7px 6px 7px 9px; }
@@ -668,6 +669,7 @@ table.grid th.fx { background: #dccbab; }
 
 /* ---------- tin nhắn ---------- */
 .chat-body { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden !important; }
+.wb-body { position: relative; padding: 0 !important; overflow: hidden !important; min-height: 420px; }
 .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; max-width: 900px; width: 100%; margin: 0 auto; }
 .chat-list { flex: 1; overflow-y: auto; padding: 16px 20px 8px; display: flex; flex-direction: column; gap: 2px; }
 .chat-day { align-self: center; font-size: 11.5px; color: var(--muted); font-weight: 700; margin: 14px 0 6px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 99px; text-transform: capitalize; }

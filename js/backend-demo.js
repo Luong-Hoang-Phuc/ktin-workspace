@@ -1,7 +1,7 @@
 // CHẾ ĐỘ DEMO: dữ liệu lưu trong trình duyệt (localStorage), "realtime" giữa các tab qua BroadcastChannel.
 // Dùng để xem thử giao diện khi chưa cấu hình máy chủ.
 import { buildSeed } from './demo-seed.js';
-const KEY = 'ktin-demo-v5';
+const KEY = 'ktin-demo-v6';
 let bc = null; try { bc = new BroadcastChannel('ktin-demo'); } catch {}
 const listeners = new Set();
 const rooms = new Map();
