@@ -2,7 +2,7 @@
 // TIN NHẮN NHÓM – trò chuyện realtime giữa các thành viên
 // =====================================================================
 import db from '../db.js';
-import { store, on, profileOf, nameOf } from '../store.js';
+import { store, on, profileOf, nameOf, colorOf } from '../store.js';
 import { h, fill, toastErr, avatar, esc } from '../ui.js';
 
 const READ = 'ktin-chat-read';
@@ -50,10 +50,15 @@ function viewImage(att) {
   db.fileUrl(att.path, att.name || 'anh').then(u => { dl.href = u; }).catch(() => {});
 }
 
+const QUICK = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const MORE = ['🔥', '👏', '🎉', '✅', '❌', '👀', '💯', '🤔', '😅', '😍', '🥲', '😡', '💪', '🙌', '👌', '⭐', '📌', '⏰'];
+// màu chữ đọc được trên nền màu tài khoản
+const ink = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255; return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#1f2937' : '#fff'; };
+
 const timeOf = (iso) => new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
 export function mountChat(el, { onRead }) {
-  let msgs = [];
+  let msgs = [], reacts = [];
   const typing = new Map();
   const list = h('div', { class: 'chat-list' });
   const typingEl = h('div', { class: 'chat-typing small muted' });
@@ -98,6 +103,50 @@ export function mountChat(el, { onRead }) {
     urlOf(a.path).then(u => { img.src = u; }).catch(() => { img.alt = 'Không tải được ảnh'; });
     return h('button', { class: 'msg-img', title: 'Bấm để xem ảnh lớn', onclick: () => viewImage(a) }, img);
   }
+  // ---------- cảm xúc ----------
+  function reactRow(m) {
+    const mine = reacts.filter(r => r.message_id === m.id);
+    if (!mine.length) return null;
+    const by = new Map();
+    mine.forEach(r => { if (!by.has(r.emoji)) by.set(r.emoji, []); by.get(r.emoji).push(r); });
+    return h('div', { class: 'msg-reacts' }, [...by].map(([emo, rs]) => {
+      const meIn = rs.some(r => r.user_id === store.user.id);
+      const names = rs.map(r => r.user_id === store.user.id ? 'Bạn' : nameOf(r.user_id)).join(', ');
+      return h('button', { class: `react-chip ${meIn ? 'on' : ''}`, title: `${names} đã thả ${emo}${meIn ? ' · bấm để bỏ' : ''}`, onclick: () => toggleReact(m, emo) }, h('span', { class: 'emo' }, emo), rs.length > 1 ? h('b', {}, rs.length) : h('span', { class: 'dots' }, rs.slice(0, 1).map(r => h('i', { style: { background: colorOf(r.user_id) } }))));
+    }));
+  }
+  let busy = new Set();
+  async function toggleReact(m, emo) {
+    const key = m.id + emo; if (busy.has(key)) return; busy.add(key);
+    const had = reacts.find(r => r.message_id === m.id && r.user_id === store.user.id && r.emoji === emo);
+    try {
+      if (had) { reacts = reacts.filter(r => r !== had); render(); await db.remove('message_reactions', had.id); }
+      else {
+        const tmp = { id: 'tmp-' + key, message_id: m.id, user_id: store.user.id, emoji: emo }; reacts.push(tmp); render();
+        const r = await db.insert('message_reactions', { message_id: m.id, user_id: store.user.id, emoji: emo });
+        reacts = reacts.filter(x => x !== tmp && x.id !== r.id); reacts.push(r); render();
+      }
+    } catch (e) { reacts = reacts.filter(r => !String(r.id).startsWith('tmp-')); render(); if (!/duplicate|unique/i.test(e.message || '')) toastErr(e); }
+    finally { busy.delete(key); }
+  }
+  function pickReact(m, anchor) {
+    document.querySelectorAll('.react-pick').forEach(x => x.remove());
+    let more = false;
+    const pop = h('div', { class: 'react-pick' });
+    const draw = () => fill(pop, h('div', { class: 'rp-row' }, QUICK.map(e => h('button', { class: 'rp-e', onclick: () => { close(); toggleReact(m, e); } }, e)),
+        h('button', { class: 'rp-e rp-more', title: 'Thêm biểu tượng', onclick: (ev) => { ev.stopPropagation(); more = !more; draw(); } }, more ? '−' : '+')),
+      more ? h('div', { class: 'rp-grid' }, MORE.map(e => h('button', { class: 'rp-e', onclick: () => { close(); toggleReact(m, e); } }, e))) : null);
+    draw();
+    document.body.append(pop);
+    const r = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + 'px';
+    pop.style.top = (r.top - ph - 8 < 8 ? r.bottom + 8 : r.top - ph - 8) + 'px';
+    const close = () => { pop.remove(); removeEventListener('pointerdown', outside, true); removeEventListener('keydown', esc1, true); };
+    const outside = (e) => { if (!pop.contains(e.target)) close(); };
+    const esc1 = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    setTimeout(() => { addEventListener('pointerdown', outside, true); addEventListener('keydown', esc1, true); }, 0);
+  }
+
   // ---------- trả lời tin nhắn ----------
   let replyTo = null;
   const snippet = (m) => (m.body || '').replace(/\s+/g, ' ').trim().slice(0, 90) + ((m.body || '').length > 90 ? '…' : '') || (atts(m).length ? `🖼 ${atts(m).length > 1 ? atts(m).length + ' ảnh' : 'Ảnh'}` : '');
@@ -133,14 +182,17 @@ export function mountChat(el, { onRead }) {
       const d = dayOf(m.created_at), mine = m.user_id === store.user.id;
       const grouped = prev && prev.user_id === m.user_id && new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000 && d === day;
       const out = [d !== day ? h('div', { class: 'chat-day' }, d) : null,
-        h('div', { class: `msg ${mine ? 'mine' : ''} ${grouped && !m.reply_to ? 'grp' : ''}`, 'data-id': m.id },
+        h('div', { class: `msg ${mine ? 'mine' : ''} ${grouped && !m.reply_to ? 'grp' : ''}`, 'data-id': m.id, style: { '--uc': colorOf(m.user_id), '--uc-ink': ink(colorOf(m.user_id)) } },
           !mine && !grouped ? avatar(profileOf(m.user_id) || { display_name: nameOf(m.user_id) }, 30) : h('span', { class: 'msg-sp' }),
           h('div', { class: 'msg-b' },
             !grouped || m.reply_to ? h('div', { class: 'msg-h' }, h('b', {}, mine ? 'Bạn' : nameOf(m.user_id)), h('small', {}, timeOf(m.created_at))) : null,
             m.reply_to ? quoteOf(m) : null,
             atts(m).length ? h('div', { class: `msg-imgs n${Math.min(atts(m).length, 3)}` }, atts(m).map(a => thumb(a))) : null,
-            m.body ? h('div', { class: 'bubble', html: linkify(m.body) }) : null),
-          h('button', { class: 'msg-act', title: 'Trả lời tin nhắn này', onclick: () => startReply(m) }, '↩'))];
+            m.body ? h('div', { class: 'bubble', html: linkify(m.body) }) : null,
+            reactRow(m)),
+          h('div', { class: 'msg-acts' },
+            h('button', { class: 'msg-act', title: 'Thả cảm xúc', onclick: (e) => pickReact(m, e.currentTarget) }, '☺'),
+            h('button', { class: 'msg-act', title: 'Trả lời tin nhắn này', onclick: () => startReply(m) }, '↩')))];
       day = d; prev = m; return out;
     }) : h('div', { class: 'empty' }, h('div', { class: 'big' }, '💬'), h('p', {}, 'Chưa có tin nhắn.')));
     if (atBottom || !render.done) list.scrollTop = list.scrollHeight;
@@ -187,6 +239,14 @@ export function mountChat(el, { onRead }) {
     msgs.sort((a, b) => a.created_at.localeCompare(b.created_at)); render();
   });
   const offP = on('profiles', render);
-  (async () => { try { msgs = await db.select('messages', { order: ['created_at', true] }); msgs = msgs.slice(-500); render(); box.focus(); } catch (e) { toastErr(e); } })();
-  return () => { off(); offP(); room.close(); pending.forEach(p => URL.revokeObjectURL(p.url)); };
+  const offR = db.subscribe('message_reactions', null, (e) => {
+    if (e.type === 'DELETE') reacts = reacts.filter(r => r.id !== e.old.id);
+    else if (!reacts.some(r => r.id === e.new.id)) { reacts = reacts.filter(r => !(String(r.id).startsWith('tmp-') && r.message_id === e.new.message_id && r.user_id === e.new.user_id && r.emoji === e.new.emoji)); reacts.push(e.new); }
+    render();
+  });
+  (async () => {
+    try { msgs = await db.select('messages', { order: ['created_at', true] }); msgs = msgs.slice(-500); render(); box.focus(); } catch (e) { toastErr(e); }
+    try { reacts = await db.select('message_reactions'); render(); } catch (e) { console.warn('Chưa có bảng cảm xúc', e); }
+  })();
+  return () => { off(); offP(); offR(); document.querySelectorAll('.react-pick').forEach(x => x.remove()); room.close(); pending.forEach(p => URL.revokeObjectURL(p.url)); };
 }

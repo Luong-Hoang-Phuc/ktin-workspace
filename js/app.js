@@ -1,6 +1,6 @@
 import db, { logActivity } from './db.js';
 import { APP_NAME, APP_SUBTITLE } from './config.js';
-import { store, on, emit, productOf, sectionFolder, docsFolder, companyFolder, folderFor, setWhere, folderOf } from './store.js';
+import { store, on, emit, USER_COLORS, productOf, sectionFolder, docsFolder, companyFolder, folderFor, setWhere, folderOf } from './store.js';
 import { h, toast, toastErr, viError, prompt, confirmBox, modal, avatar, popMenu, fill } from './ui.js';
 import { SECTIONS, WORK_SECTIONS, VIEW_TABS, SECTION_TEMPLATES } from './views/templates.js';
 import { mountPicker, productThumb } from './views/picker.js';
@@ -44,6 +44,17 @@ async function start(user, fresh = false) {
   }
   profiles.forEach(p => store.profiles.set(p.id, p));
   store.me = store.profiles.get(user.id);
+  // Mỗi tài khoản một màu riêng: nếu màu của mình trùng với người vào nhóm trước thì tự đổi sang màu còn trống
+  try {
+    const mine = store.me, others = profiles.filter(p => p.id !== user.id);
+    const earlier = (p) => (p.created_at || '') < (mine.created_at || '') || ((p.created_at || '') === (mine.created_at || '') && p.id < mine.id);
+    const clash = mine && (!mine.color || others.some(p => p.color === mine.color && earlier(p)));
+    if (mine && clash) {
+      const used = new Set(others.map(p => p.color));
+      const color = USER_COLORS.find(c => !used.has(c)) || USER_COLORS[others.length % USER_COLORS.length];
+      if (color !== mine.color) { const upd = await db.update('profiles', user.id, { color }); store.me = { ...mine, ...(upd || { color }) }; store.profiles.set(user.id, store.me); }
+    }
+  } catch (e) { console.warn(e); }
   [store.products, store.folders] = await Promise.all([db.select('products', { order: ['position', true] }), db.select('folders', { order: ['position', true] })]);
   (await db.select('settings')).forEach(s => store.settings.set(s.id, s.value));
 
@@ -264,9 +275,11 @@ async function editCanva() {
 async function openProfile() {
   const me = store.me || {};
   const name = h('input', { class: 'input', value: me.display_name || '' });
-  const COLORS = ['#b5462f', '#4f6b3a', '#3b5a7a', '#8a5a2b', '#7a3b6b', '#2f6f73', '#a67c00', '#3b2a1a'];
-  let color = me.color || COLORS[0];
-  const colors = h('div', { class: 'colors' }, COLORS.map(c => h('span', { class: `swatch ${c === color ? 'on' : ''}`, style: { background: c }, onclick: (e) => { color = c; colors.querySelectorAll('.swatch').forEach(s => s.classList.remove('on')); e.target.classList.add('on'); } })));
+  let color = me.color || USER_COLORS[0];
+  const takenBy = new Map([...store.profiles.values()].filter(p => p.id !== store.user.id && p.color).map(p => [p.color, p.display_name || p.email]));
+  const colors = h('div', { class: 'colors' }, USER_COLORS.map(c => takenBy.has(c)
+    ? h('span', { class: 'swatch taken', style: { background: c }, title: `${takenBy.get(c)} đang dùng màu này` })
+    : h('span', { class: `swatch ${c === color ? 'on' : ''}`, style: { background: c }, title: 'Chọn màu này', onclick: (e) => { color = c; colors.querySelectorAll('.swatch').forEach(s => s.classList.remove('on')); e.target.classList.add('on'); } })));
   const pw = h('input', { class: 'input', type: 'password', placeholder: 'Để trống nếu không đổi', autocomplete: 'new-password' });
   const body = h('div', {},
     h('p', { class: 'muted small' }, store.user.email),

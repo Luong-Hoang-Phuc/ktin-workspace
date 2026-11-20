@@ -16,6 +16,9 @@ const handlers = {};
 export function on(evt, fn) { (handlers[evt] ||= new Set()).add(fn); return () => handlers[evt].delete(fn); }
 export function emit(evt, data) { handlers[evt]?.forEach(fn => { try { fn(data); } catch (e) { console.error(e); } }); }
 
+// Bảng màu tài khoản – mỗi thành viên một màu riêng (tên, ảnh đại diện, bong bóng tin nhắn)
+export const USER_COLORS = ['#b5462f', '#4f6b3a', '#3b5a7a', '#8a5a2b', '#7a3b6b', '#2f6f73', '#a67c00', '#c2410c', '#1d4ed8', '#be185d', '#047857', '#6d28d9'];
+export const colorOf = (id) => profileOf(id)?.color || '#64748b';
 export const profileOf = (id) => store.profiles.get(id) || null;
 export const nameOf = (id) => { const p = profileOf(id); return p ? (p.display_name || p.email) : 'Ai đó'; };
 export const folderOf = (id) => store.folders.find(f => f.id === id) || null;

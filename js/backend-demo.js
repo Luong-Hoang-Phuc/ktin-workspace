@@ -1,7 +1,7 @@
 // CHẾ ĐỘ DEMO: dữ liệu lưu trong trình duyệt (localStorage), "realtime" giữa các tab qua BroadcastChannel.
 // Dùng để xem thử giao diện khi chưa cấu hình máy chủ.
 import { buildSeed } from './demo-seed.js';
-const KEY = 'ktin-demo-v6';
+const KEY = 'ktin-demo-v7';
 let bc = null; try { bc = new BroadcastChannel('ktin-demo'); } catch {}
 const listeners = new Set();
 const rooms = new Map();
@@ -81,7 +81,7 @@ const db = {
     const i = (state.t[table] || []).findIndex(x => x.id === id); if (i < 0) return;
     const [old] = state.t[table].splice(i, 1);
     // xoá dây chuyền đơn giản
-    const cascade = { folders: [['folders', 'parent_id'], ['files', 'folder_id'], ['notes', 'folder_id'], ['boards', 'folder_id'], ['data_tables', 'folder_id']], boards: [['board_items', 'board_id']], data_tables: [['data_rows', 'table_id']], files: [['files', 'parent_file_id']], factory_nodes: [['factory_nodes', 'parent_id']], machines: [['factory_nodes', 'machine_id']] }[table] || [];
+    const cascade = { folders: [['folders', 'parent_id'], ['files', 'folder_id'], ['notes', 'folder_id'], ['boards', 'folder_id'], ['data_tables', 'folder_id']], boards: [['board_items', 'board_id']], messages: [['message_reactions', 'message_id']], data_tables: [['data_rows', 'table_id']], files: [['files', 'parent_file_id']], factory_nodes: [['factory_nodes', 'parent_id']], machines: [['factory_nodes', 'machine_id']] }[table] || [];
     save(); emit(table, { type: 'DELETE', new: {}, old });
     for (const [t, col] of cascade) for (const r of (state.t[t] || []).filter(x => x[col] === id)) await this.remove(t, r.id);
   },

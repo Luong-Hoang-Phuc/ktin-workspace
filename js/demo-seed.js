@@ -11,7 +11,7 @@ const txt = (s) => 'data:text/plain;base64,' + btoa(unescape(encodeURIComponent(
 
 // demo = true: thêm 2 bạn giả lập, file mẫu, ghi chú, bảng trắng, hoạt động
 export function buildSeed(uuid, { demo = true } = {}) {
-  const t = { profiles: [], products: [], folders: [], machines: [], factory_nodes: [], product_plans: [], files: [], notes: [], messages: [], boards: [], board_items: [], data_tables: [], data_rows: [], activity: [], settings: [] };
+  const t = { profiles: [], products: [], folders: [], machines: [], factory_nodes: [], product_plans: [], files: [], notes: [], messages: [], message_reactions: [], boards: [], board_items: [], data_tables: [], data_rows: [], activity: [], settings: [] };
   const blobs = {};
   const meta = { products: {}, folders: {} };
   const A = demo ? BOT_A.id : null, B = demo ? BOT_B.id : null;
@@ -135,6 +135,7 @@ export function buildSeed(uuid, { demo = true } = {}) {
    [A, 'Nhớ hỏi cô vụ máy thành phẩm sách chưa có trong CSDL nhé', 1430],
    [B, 'Mình vừa cập nhật tệp Word lên v2, chương 3 xong rồi.', 40]]
     .forEach(([u, body, min]) => t.messages.push({ id: uuid(), user_id: u, body, created_at: ago(min) }));
+  if (demo && t.messages[0]) { t.message_reactions.push({ id: uuid(), message_id: t.messages[0].id, user_id: B, emoji: '👍', created_at: ago(100) }); }
 
   [[A, 'đã tải lên', 'Tài liệu giảng viên (7 tệp)', 2000, null], [A, 'nhập CSDL doanh nghiệp', 'Thiết bị, vật tư, đơn giá, tham số chung', 1800, null],
    [B, 'lập phương án sản xuất', 'Hộp: màng mờ, UV từng phần, ép nhũ', 900, 'hop'], [B, 'tính thời gian sản xuất', 'Hộp – 9 công đoạn', 300, 'hop'],
