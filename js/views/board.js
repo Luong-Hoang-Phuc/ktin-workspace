@@ -63,7 +63,16 @@ function tLine(d, axis, at, delta) {
   if (delta > 0) arr.splice(at, 0, arr[Math.min(at, arr.length - 1)] || (isR ? 40 : 120)); else arr.splice(at, 1);
   return { cells: remap(d.cells), al: remap(d.al), mg, cw, rh, w: sum(cw), h: sum(rh) };
 }
-const fontCss = (name) => (FONTS.find(f => f[0] === name) || FONTS[0])[1];
+// Font phụ của bảng trắng chỉ tải khi có chữ dùng tới (mở web nhanh hơn)
+const LAZY_FONTS = { Roboto: 'Roboto:ital,wght@0,400;0,500;0,700;1,400;1,500', Lora: 'Lora:ital,wght@0,500;0,700;1,500', 'Patrick Hand': 'Patrick+Hand', 'Dancing Script': 'Dancing+Script:wght@500;700' };
+const fontLoaded = new Set();
+function ensureFont(css) {
+  const fam = /'([^']+)'/.exec(css)?.[1];
+  if (!fam || !LAZY_FONTS[fam] || fontLoaded.has(fam)) return;
+  fontLoaded.add(fam);
+  document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: `https://fonts.googleapis.com/css2?family=${LAZY_FONTS[fam]}&display=swap` }));
+}
+const fontCss = (name) => { const css = (FONTS.find(f => f[0] === name) || FONTS[0])[1]; ensureFont(css); return css; };
 const TEXT_COLORS = ['#1f2937', '#ffffff', '#64748b', '#dc2626', '#ea580c', '#ca8a04', '#059669', '#2563eb', '#7c3aed', '#db2777'];
 // Kiểu chữ mặc định theo loại hình
 const defStyle = (kind) => ({ size: kind === 'text' ? 20 : 15, align: kind === 'rect' || kind === 'ellipse' ? 'center' : 'left', valign: kind === 'rect' || kind === 'ellipse' ? 'middle' : 'top' });
@@ -240,7 +249,7 @@ export function mountBoards(el, { folder, sub, go }) {
     const tog = (k, label, title, css) => h('button', { class: `wb-tool fmt-b ${st[k] ? 'on' : ''}`, title, style: css, onclick: () => set({ [k]: !st[k] }) }, label);
     const al = (k, v, icon, title) => h('button', { class: `wb-tool fmt-i ${st[k] === v ? 'on' : ''}`, title, onclick: () => set({ [k]: v }), html: icon });
     const fontSel = h('select', { class: 'input fmt-font', title: 'Phông chữ', onchange: () => set({ font: fontSel.value }) },
-      FONTS.map(([n, css]) => h('option', { value: n, selected: n === st.font, style: { fontFamily: css } }, n)));
+      FONTS.map(([n, css]) => { ensureFont(css); return h('option', { value: n, selected: n === st.font, style: { fontFamily: css } }, n); }));
     const sizeIn = h('input', { class: 'input fmt-size', type: 'number', min: 8, max: 120, value: st.size, title: 'Cỡ chữ', onchange: () => { const v = Math.min(120, Math.max(8, Math.round(+sizeIn.value || st.size))); set({ size: v }); } });
     const colIn = h('input', { type: 'color', class: 'fmt-color', title: 'Màu khác…', value: /^#[0-9a-f]{6}$/i.test(st.tcolor || '') ? st.tcolor : '#1f2937', onchange: () => set({ tcolor: colIn.value }) });
     const L = (a, b, c) => `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M${a} 3h${b}M2 6.5h12M${c} 10h${16 - 2 * c}M2 13.5h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
@@ -458,15 +467,39 @@ export function mountBoards(el, { folder, sub, go }) {
       const b = bbox(it); return inG(b.x + b.w / 2, b.y + b.h / 2);
     });
   }
+  // ---------- vẽ nhanh: chỉ vẽ lại mục nào thực sự thay đổi, giữ nguyên các mục khác ----------
+  const gCache = new Map();   // id → { key, node }
+  function itemKey(it) {
+    const anchored = it.kind === 'arrow' && (it.data.from || it.data.to);
+    const s = selSet.has(it.id) ? (sel === it.id && selSet.size === 1 ? 2 : 1) : 0;
+    const zk = s ? view.z : 0;   // khung chọn / tay nắm phụ thuộc mức zoom
+    return `${it.kind}|${it.z || 0}|${s}|${zk}|${it.kind === 'table' && s === 2 ? JSON.stringify(tcur()) : ''}|${JSON.stringify(anchored ? { ...it.data, ...arrowPts(it.data) } : it.data)}`;
+  }
+  function nodeFor(it) {
+    const k = itemKey(it), c = gCache.get(it.id);
+    if (c && c.key === k) return c.node;
+    const node = drawItem(it); gCache.set(it.id, { key: k, node });
+    return node;
+  }
+  let rafId = 0, zoomT = 0;
+  const redrawSoon = () => { if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; redraw(); }); };
   function redraw() {
-    fill(world, ...[...items.values()].sort((a, b) => (a.z || 0) - (b.z || 0)).map(drawItem));
-    if (drag?.hover && items.get(drag.hover)) { const b = bbox(items.get(drag.hover)); world.append(S('rect', { x: b.x - 6, y: b.y - 6, width: b.w + 12, height: b.h + 12, rx: 8, fill: 'none', stroke: '#059669', 'stroke-width': 2.5 / view.z, 'pointer-events': 'none' })); }
-    if (drag?.guides?.length) for (const gd of drag.guides) world.append(S('line', { ...gd, stroke: '#e11d74', 'stroke-width': 1.2 / view.z, 'pointer-events': 'none' }));
-    if (drag?.mode === 'marquee') { const m = drag.rect; world.append(S('rect', { x: m.x, y: m.y, width: m.w, height: m.h, fill: 'rgba(37,99,235,.08)', stroke: '#2563eb', 'stroke-width': 1 / view.z })); }
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    const list = [...items.values()].sort((a, b) => (a.z || 0) - (b.z || 0)).map(nodeFor);
+    for (const id of gCache.keys()) if (!items.has(id)) gCache.delete(id);
+    world.querySelectorAll(':scope > .wb-ov').forEach(n => n.remove());
+    const want = new Set(list);
+    for (const n of [...world.children]) if (!want.has(n)) n.remove();
+    list.forEach((n, i) => { if (world.children[i] !== n) world.insertBefore(n, world.children[i] || null); });
+    const ov = (el) => { el.classList.add('wb-ov'); world.append(el); };
+    if (drag?.hover && items.get(drag.hover)) { const b = bbox(items.get(drag.hover)); ov(S('rect', { x: b.x - 6, y: b.y - 6, width: b.w + 12, height: b.h + 12, rx: 8, fill: 'none', stroke: '#059669', 'stroke-width': 2.5 / view.z, 'pointer-events': 'none' })); }
+    if (drag?.guides?.length) for (const gd of drag.guides) ov(S('line', { ...gd, stroke: '#e11d74', 'stroke-width': 1.2 / view.z, 'pointer-events': 'none' }));
+    if (drag?.mode === 'marquee') { const m = drag.rect; ov(S('rect', { x: m.x, y: m.y, width: m.w, height: m.h, fill: 'rgba(37,99,235,.08)', stroke: '#2563eb', 'stroke-width': 1 / view.z })); }
     if (!items.size && board) {
-      const t = S('text', { x: 40, y: 60, fill: '#94a3b8', 'font-size': 16 }); t.textContent = 'Bảng trống – chọn 🟨 Ghi chú rồi nhấp vào bảng để bắt đầu.'; world.append(t);
+      const t = S('text', { x: 40, y: 60, fill: '#94a3b8', 'font-size': 16 }); t.textContent = 'Bảng trống – chọn 🟨 Ghi chú rồi nhấp vào bảng để bắt đầu.'; ov(t);
     }
   }
+
 
   // ---------- toạ độ ----------
   const toWorld = (e) => { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left - view.x) / view.z, y: (e.clientY - r.top - view.y) / view.z }; };
@@ -555,13 +588,13 @@ export function mountBoards(el, { folder, sub, go }) {
       drag.rect = { x: Math.min(drag.start.x, p.x), y: Math.min(drag.start.y, p.y), w: Math.abs(dx), h: Math.abs(dy) };
       const m = drag.rect; selSet.clear(); drag.base.forEach(x => selSet.add(x));
       for (const it of items.values()) { const b = bbox(it); if (b.x >= m.x && b.y >= m.y && b.x + b.w <= m.x + m.w && b.y + b.h <= m.y + m.h) selSet.add(it.id); }
-      sel = [...selSet].pop() || null; redraw(); return;
+      sel = [...selSet].pop() || null; redrawSoon(); return;
     }
     if (drag.mode === 'cells') {
       const it = items.get(drag.id); if (!it) return;
       const a = drag.a, b = cellAt(it, p);
       const n = tFit(it.data, { id: drag.id, r0: Math.min(a.r, b.r), r1: Math.max(a.r + a.rs, b.r + b.rs) - 1, c0: Math.min(a.c, b.c), c1: Math.max(a.c + a.cs, b.c + b.cs) - 1 });
-      if (JSON.stringify(n) !== JSON.stringify(tsel)) { tsel = n; redraw(); }
+      if (JSON.stringify(n) !== JSON.stringify(tsel)) { tsel = n; redrawSoon(); }
       return;
     }
     if (drag.mode === 'move') {
@@ -577,7 +610,7 @@ export function mountBoards(el, { folder, sub, go }) {
         else Object.assign(it.data, { dx: (o.dx || 0) + dx, dy: (o.dy || 0) + dy });
         list.push({ id, data: it.data });
       }
-      drag.moved = true; redraw(); sendMoves(list);
+      drag.moved = true; redrawSoon(); sendMoves(list);
     } else if (drag.mode === 'resize') {
       const it = items.get(drag.id); const o = drag.orig;
       if (it.kind === 'table' && (drag.handle === 'se' || /^(col|row):/.test(drag.handle))) {
@@ -587,7 +620,7 @@ export function mountBoards(el, { folder, sub, go }) {
         else if (kind === 'col') cw[k] = Math.max(30, Math.round(o.cw[k] + dx));
         else rh[k] = Math.max(24, Math.round(o.rh[k] + dy));
         Object.assign(it.data, { cw, rh, w: sum(cw), h: sum(rh) });
-        drag.moved = true; redraw(); sendMove(it.id, it.data); return;
+        drag.moved = true; redrawSoon(); sendMove(it.id, it.data); return;
       }
       if (drag.handle === 'se' && it.kind === 'image') { const k = Math.max(40 / o.w, (o.w + dx) / o.w); Object.assign(it.data, { w: Math.round(o.w * k), h: Math.round(o.h * k) }); }
       else if (drag.handle === 'se') Object.assign(it.data, { w: Math.max(it.kind === 'group' ? 120 : 30, o.w + dx), h: Math.max(it.kind === 'group' ? GROUP_HEAD + 30 : 24, o.h + dy) });
@@ -598,13 +631,13 @@ export function mountBoards(el, { folder, sub, go }) {
         else Object.assign(it.data, { x2: p.x, y2: p.y, to: T?.id || null }, o.from ? {} : { x1: q.x1, y1: q.y1 });
         drag.hover = T?.id || null;
       }
-      drag.moved = true; redraw(); sendMove(it.id, it.data);
+      drag.moved = true; redrawSoon(); sendMove(it.id, it.data);
     } else if (drag.mode === 'create') {
       const d = drag.temp.data;
       if (drag.kind === 'arrow') { const B = itemAt(p, d.from); Object.assign(d, { x2: p.x, y2: p.y, to: B?.id || null }); drag.hover = B?.id || null; }
       else if (drag.kind === 'path') d.points.push([Math.round(p.x), Math.round(p.y)]);
       else Object.assign(d, { x: Math.min(drag.start.x, p.x), y: Math.min(drag.start.y, p.y), w: Math.abs(dx), h: Math.abs(dy) });
-      redraw();
+      redrawSoon();
     }
   });
   canvas.addEventListener('pointerup', async () => {
@@ -850,10 +883,11 @@ export function mountBoards(el, { folder, sub, go }) {
     createItem(it.kind, d, false);
   }
   function onRoom(m) {
-    if (m.t === 'move') { const it = items.get(m.id); if (it && !(drag && drag.id === m.id)) { it.data = m.data; redraw(); } }
-    if (m.t === 'moves' && !(drag && drag.mode === 'move')) { let ch = false; for (const x of m.list || []) { const it = items.get(x.id); if (it) { it.data = x.data; ch = true; } } if (ch) redraw(); }
-    if (m.t === 'cur' && m.uid !== store.user.id) { cursors.set(m.uid, { ...m, at: Date.now() }); placeCursors(); }
+    if (m.t === 'move') { const it = items.get(m.id); if (it && !(drag && drag.id === m.id)) { it.data = m.data; redrawSoon(); } }
+    if (m.t === 'moves' && !(drag && drag.mode === 'move')) { let ch = false; for (const x of m.list || []) { const it = items.get(x.id); if (it) { it.data = x.data; ch = true; } } if (ch) redrawSoon(); }
+    if (m.t === 'cur' && m.uid !== store.user.id) { cursors.set(m.uid, { ...m, at: Date.now() }); if (!curRaf) curRaf = requestAnimationFrame(() => { curRaf = 0; placeCursors(); }); }
   }
+  let curRaf = 0;
   function placeCursors() {
     canvas.querySelectorAll('.wb-cursor').forEach(c => c.remove());
     for (const [uid, c] of cursors) {

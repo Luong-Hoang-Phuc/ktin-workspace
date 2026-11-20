@@ -5,7 +5,7 @@ const sb = createClient(API_URL, API_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   realtime: { params: { eventsPerSecond: 20 } },
 });
-const rooms = new Map();
+const rooms = new Map(), subs = new Map();
 const presenceFns = new Set();
 let presenceCh = null, presenceMe = null;
 
@@ -45,16 +45,24 @@ const db = {
 
   // ---------- REALTIME ----------
   // cb({type:'INSERT'|'UPDATE'|'DELETE', new, old})
+  // Các nơi theo dõi cùng một bảng + cùng bộ lọc dùng chung 1 kênh realtime (đỡ tốn kết nối, đỡ nhận trùng dữ liệu)
   subscribe(table, filter, cb) {
-    const ch = sb.channel(`db-${table}-${uid()}`);
-    const relay = (p) => cb({ type: p.eventType, new: p.new, old: p.old });
     const f = filter ? `${filter[0]}=eq.${filter[1]}` : undefined;
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: f }, relay);
-    ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: f }, relay);
-    // Sự kiện DELETE không lọc được theo cột → nhận hết, phía giao diện tự bỏ qua id không liên quan
-    ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table }, relay);
-    ch.subscribe();
-    return () => sb.removeChannel(ch);
+    const key = `${table}|${f || ''}`;
+    let s = subs.get(key);
+    if (!s) {
+      const ch = sb.channel(`db-${table}-${uid()}`);
+      s = { ch, fns: new Set() };
+      const relay = (p) => { const ev = { type: p.eventType, new: p.new, old: p.old }; [...s.fns].forEach(fn => { try { fn(ev); } catch (e) { console.error(e); } }); };
+      ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: f }, relay);
+      ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: f }, relay);
+      // Sự kiện DELETE không lọc được theo cột → nhận hết, phía giao diện tự bỏ qua id không liên quan
+      ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table }, relay);
+      ch.subscribe();
+      subs.set(key, s);
+    }
+    s.fns.add(cb);
+    return () => { s.fns.delete(cb); if (!s.fns.size && subs.get(key) === s) { subs.delete(key); sb.removeChannel(s.ch); } };
   },
 
   // Kênh phát nhanh (không lưu DB): dùng cho con trỏ, "đang gõ"…
