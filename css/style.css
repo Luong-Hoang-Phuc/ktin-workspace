@@ -710,3 +710,23 @@ table.grid th.fx { background: #dccbab; }
 .img-view-bar { justify-self: stretch; display: flex; gap: 8px; align-items: center; justify-content: flex-end; color: #f4ead6; padding-bottom: 10px; }
 .img-view-bar .small { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .img-view img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border-radius: 4px; box-shadow: 0 8px 40px rgba(0, 0, 0, .5); }
+
+/* ---------- Trả lời tin nhắn ---------- */
+.msg { position: relative; }
+.msg-act { align-self: center; flex: none; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 15px; cursor: pointer; opacity: 0; transition: opacity .12s; padding: 0; }
+.msg:hover .msg-act, .msg-act:focus-visible { opacity: 1; }
+.msg-act:hover { background: var(--ink); color: var(--cream); }
+@media (hover: none) { .msg-act { opacity: .55; } }
+.msg-quote { display: grid; gap: 1px; text-align: left; font: inherit; font-size: 12.5px; cursor: pointer; padding: 5px 10px; border: 0; border-left: 3px solid var(--rd); border-radius: 4px 10px 10px 4px; background: rgba(198, 156, 109, .25); color: var(--ink); max-width: 100%; }
+.msg.mine .msg-quote { justify-self: end; }
+.msg-quote:hover { background: rgba(198, 156, 109, .42); }
+.msg-quote .q-who { font-weight: 700; font-size: 11.5px; color: var(--muted); }
+.msg-quote .q-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+.msg-quote.gone { font-style: italic; color: var(--muted); cursor: default; }
+@keyframes msgflash { 0%, 60% { background: rgba(181, 70, 47, .18); } 100% { background: transparent; } }
+.msg.flash { animation: msgflash 1.6s ease-out; border-radius: 10px; }
+.reply-bar { display: none; align-items: center; gap: 10px; margin-bottom: 6px; padding: 6px 8px 6px 12px; border-left: 3px solid var(--rd); background: var(--paper); border-radius: 4px 8px 8px 4px; }
+.reply-bar.on { display: flex; }
+.rb-txt { flex: 1; min-width: 0; display: grid; font-size: 12.5px; }
+.rb-txt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.reply-bar .rb-x { position: static; flex: none; }

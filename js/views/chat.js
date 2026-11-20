@@ -98,6 +98,34 @@ export function mountChat(el, { onRead }) {
     urlOf(a.path).then(u => { img.src = u; }).catch(() => { img.alt = 'Không tải được ảnh'; });
     return h('button', { class: 'msg-img', title: 'Bấm để xem ảnh lớn', onclick: () => viewImage(a) }, img);
   }
+  // ---------- trả lời tin nhắn ----------
+  let replyTo = null;
+  const snippet = (m) => (m.body || '').replace(/\s+/g, ' ').trim().slice(0, 90) + ((m.body || '').length > 90 ? '…' : '') || (atts(m).length ? `🖼 ${atts(m).length > 1 ? atts(m).length + ' ảnh' : 'Ảnh'}` : '');
+  const whoOf = (m) => m.user_id === store.user.id ? 'Bạn' : nameOf(m.user_id);
+  function quoteOf(m) {
+    const src = msgs.find(x => x.id === m.reply_to);
+    const mine = m.user_id === store.user.id;
+    if (!src) return h('div', { class: 'msg-quote gone' }, '↩ Tin nhắn gốc đã bị xoá');
+    const target = src.user_id === store.user.id ? (mine ? 'chính mình' : 'bạn') : nameOf(src.user_id);
+    return h('button', { class: 'msg-quote', title: 'Đến tin nhắn gốc', onclick: () => jumpTo(src.id) },
+      h('span', { class: 'q-who' }, `↩ ${mine ? 'Bạn' : nameOf(m.user_id)} trả lời ${target}`),
+      h('span', { class: 'q-txt' }, snippet(src)));
+  }
+  function jumpTo(id) {
+    const el = list.querySelector(`.msg[data-id="${id}"]`); if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+  const replyBar = h('div', { class: 'reply-bar' });
+  function startReply(m) { replyTo = m; renderReply(); box.focus(); }
+  function cancelReply() { replyTo = null; renderReply(); }
+  function renderReply() {
+    replyBar.classList.toggle('on', !!replyTo);
+    fill(replyBar, replyTo ? [h('div', { class: 'rb-txt' }, h('b', {}, `Đang trả lời ${whoOf(replyTo) === 'Bạn' ? 'chính mình' : whoOf(replyTo)}`), h('span', {}, snippet(replyTo))),
+      h('button', { class: 'tray-x rb-x', title: 'Huỷ trả lời (Esc)', onclick: cancelReply }, '×')] : []);
+  }
+  tray.before(replyBar);
+
   function render() {
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
     let day = '', prev = null;
@@ -105,12 +133,14 @@ export function mountChat(el, { onRead }) {
       const d = dayOf(m.created_at), mine = m.user_id === store.user.id;
       const grouped = prev && prev.user_id === m.user_id && new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000 && d === day;
       const out = [d !== day ? h('div', { class: 'chat-day' }, d) : null,
-        h('div', { class: `msg ${mine ? 'mine' : ''} ${grouped ? 'grp' : ''}` },
+        h('div', { class: `msg ${mine ? 'mine' : ''} ${grouped && !m.reply_to ? 'grp' : ''}`, 'data-id': m.id },
           !mine && !grouped ? avatar(profileOf(m.user_id) || { display_name: nameOf(m.user_id) }, 30) : h('span', { class: 'msg-sp' }),
           h('div', { class: 'msg-b' },
-            !grouped ? h('div', { class: 'msg-h' }, h('b', {}, mine ? 'Bạn' : nameOf(m.user_id)), h('small', {}, timeOf(m.created_at))) : null,
+            !grouped || m.reply_to ? h('div', { class: 'msg-h' }, h('b', {}, mine ? 'Bạn' : nameOf(m.user_id)), h('small', {}, timeOf(m.created_at))) : null,
+            m.reply_to ? quoteOf(m) : null,
             atts(m).length ? h('div', { class: `msg-imgs n${Math.min(atts(m).length, 3)}` }, atts(m).map(a => thumb(a))) : null,
-            m.body ? h('div', { class: 'bubble', html: linkify(m.body) }) : null))];
+            m.body ? h('div', { class: 'bubble', html: linkify(m.body) }) : null),
+          h('button', { class: 'msg-act', title: 'Trả lời tin nhắn này', onclick: () => startReply(m) }, '↩'))];
       day = d; prev = m; return out;
     }) : h('div', { class: 'empty' }, h('div', { class: 'big' }, '💬'), h('p', {}, 'Chưa có tin nhắn.')));
     if (atBottom || !render.done) list.scrollTop = list.scrollHeight;
@@ -123,6 +153,7 @@ export function mountChat(el, { onRead }) {
     if ((!body && !pending.length) || sending) return;
     sending = true; send.disabled = true; attachBtn.disabled = true;
     const files = pending; pending = []; renderTray();
+    const reply = replyTo; cancelReply();
     box.value = ''; autosize();
     if (files.length) send.textContent = 'Đang gửi ảnh…';
     try {
@@ -134,6 +165,7 @@ export function mountChat(el, { onRead }) {
         attachments.push({ path, name: p.file.name, w, h: hh, size: blob.size, mime: blob.type || p.file.type });
       }
       const row = { user_id: store.user.id, body };
+      if (reply) row.reply_to = reply.id;
       if (attachments.length) row.attachments = attachments;
       const m = await db.insert('messages', row);
       files.forEach(p => URL.revokeObjectURL(p.url));
@@ -141,12 +173,13 @@ export function mountChat(el, { onRead }) {
     } catch (e) {
       toastErr(e); box.value = body; autosize();
       if (files.length && !pending.length) { pending = files; renderTray(); }
+      if (reply && !replyTo) startReply(reply);
     } finally { sending = false; send.disabled = false; attachBtn.disabled = false; send.textContent = 'Gửi'; }
   }
   const autosize = () => { box.style.height = 'auto'; box.style.height = Math.min(160, box.scrollHeight) + 'px'; };
   let lastTyping = 0;
   box.addEventListener('input', () => { autosize(); if (Date.now() - lastTyping > 1500) { lastTyping = Date.now(); room.send({ t: 'typing', uid: store.user.id, name: store.me?.display_name }); } });
-  box.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
+  box.addEventListener('keydown', (e) => { if (e.key === 'Escape' && replyTo) { e.preventDefault(); cancelReply(); return; } if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
 
   const off = db.subscribe('messages', null, (e) => {
     if (e.type === 'DELETE') msgs = msgs.filter(m => m.id !== e.old.id);

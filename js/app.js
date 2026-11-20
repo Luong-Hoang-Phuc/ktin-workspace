@@ -56,13 +56,16 @@ async function start(user, fresh = false) {
   db.subscribe('profiles', null, (e) => { if (e.type !== 'DELETE') { store.profiles.set(e.new.id, e.new); if (e.new.id === user.id) store.me = e.new; renderTop(); emit('profiles'); } });
 
   // tin nhắn chưa đọc
-  try { const lr = lastRead(); store.unread = (await db.select('messages')).filter(m => m.user_id !== user.id && m.created_at > lr).length; } catch { store.unread = 0; }
+  store.myMsgIds = new Set();
+  try { const lr = lastRead(), all = await db.select('messages'); all.forEach(m => { if (m.user_id === user.id) store.myMsgIds.add(m.id); }); store.unread = all.filter(m => m.user_id !== user.id && m.created_at > lr).length; } catch { store.unread = 0; }
   db.subscribe('messages', null, (e) => {
+    if (e.type === 'INSERT' && e.new.user_id === user.id) store.myMsgIds.add(e.new.id);
     if (e.type !== 'INSERT' || e.new.user_id === user.id || store.route.view === 'chat') return;
     store.unread = (store.unread || 0) + 1; renderSide();
     const who = store.profiles.get(e.new.user_id)?.display_name || 'Ai đó';
     const txt = e.new.body || (e.new.attachments?.length ? `🖼 đã gửi ${e.new.attachments.length > 1 ? e.new.attachments.length + ' ảnh' : 'một ảnh'}` : '');
-    toast(`💬 ${who}: ${txt.length > 60 ? txt.slice(0, 60) + '…' : txt}`);
+    const toMe = e.new.reply_to && store.myMsgIds?.has(e.new.reply_to);
+    toast(`${toMe ? '↩' : '💬'} ${who}${toMe ? ' trả lời bạn' : ''}: ${txt.length > 60 ? txt.slice(0, 60) + '…' : txt}`);
   });
 
   renderShell();
