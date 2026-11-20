@@ -80,7 +80,7 @@ export function mountBoards(el, { folder, sub, go }) {
       h('button', { class: 'wb-tool', disabled: ![...selSet].some(id => items.get(id)?.kind !== 'group'), title: 'Gom các mục đang chọn thành nhóm có tiêu đề (Ctrl+G)', onclick: makeGroup }, '▣ Nhóm'),
       h('button', { class: 'wb-tool', disabled: ![...selSet].some(id => items.get(id)?.kind === 'group'), title: 'Bỏ khung nhóm, giữ lại các ghi chú bên trong (Ctrl+Shift+G)', onclick: ungroup }, 'Bỏ nhóm'),
       h('div', { class: 'grow' }),
-      h('span', { class: 'small muted' }, 'Shift + nhấp / Shift + kéo để chọn nhiều · Nhấp đúp để sửa chữ'));
+      h('span', { class: 'small muted' }, 'Shift + nhấp / Shift + kéo để chọn nhiều · Nhấp đúp hoặc Enter để sửa chữ'));
     renderFmt();
     fill(zoomBox, h('button', { class: 'icon-btn', onclick: () => zoomAt(1 / 1.2) }, '－'), h('span', { class: 'small', style: { padding: '4px 6px', minWidth: '44px', textAlign: 'center' } }, Math.round(view.z * 100) + '%'), h('button', { class: 'icon-btn', onclick: () => zoomAt(1.2) }, '＋'), h('button', { class: 'icon-btn', title: 'Vừa khung', onclick: fit }, '⤢'));
   }
@@ -259,7 +259,7 @@ export function mountBoards(el, { folder, sub, go }) {
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); const r = canvas.getBoundingClientRect(); if (e.ctrlKey || e.metaKey || !e.shiftKey) zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX - r.left, e.clientY - r.top); else { view.x -= e.deltaX || e.deltaY; applyView(); } }, { passive: false });
 
   // ---------- thao tác chuột ----------
-  let drag = null, lastDown = null;
+  let drag = null, lastDown = null, lastClick = null;
   canvas.addEventListener('pointerdown', (e) => {
     if (!board || e.button > 1 || e.target.closest('.wb-zoom') || e.target.closest('.wb-text-edit')) return;
     canvas.focus();
@@ -275,6 +275,13 @@ export function mountBoards(el, { folder, sub, go }) {
     }
     if (tool === 'select' && g) {
       const id = g.getAttribute('data-id'); const it = items.get(id);
+      // Nhấp 2 lần vào cùng một mục → sửa chữ (tự nhận, không phụ thuộc sự kiện dblclick của trình duyệt
+      // vì bảng vẽ lại sau lần nhấp đầu làm trình duyệt bỏ lỡ nhấp đúp)
+      const now = Date.now();
+      if (!e.shiftKey && !handle && lastClick && lastClick.id === id && now - lastClick.t < 450 && Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) < 6 && RECT.has(it.kind)) {
+        lastClick = null; selectOnly(id); redraw(); renderBar(); editText(it); return;
+      }
+      lastClick = { id, t: now, x: e.clientX, y: e.clientY };
       if (e.shiftKey) { if (selSet.has(id)) { selSet.delete(id); sel = [...selSet].pop() || null; } else { selSet.add(id); sel = id; } redraw(); renderBar(); return; }
       if (!selSet.has(id)) selectOnly(id); else sel = id;
       redraw(); renderBar();
@@ -357,6 +364,7 @@ export function mountBoards(el, { folder, sub, go }) {
     }
   });
   canvas.addEventListener('dblclick', (e) => {
+    if (canvas.querySelector('.wb-text-edit')) return;
     const g = e.target.closest('.wb-item');
     const it = items.get(g ? g.getAttribute('data-id') : lastDown);
     if (it && RECT.has(it.kind)) editText(it);
@@ -368,10 +376,14 @@ export function mountBoards(el, { folder, sub, go }) {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') { e.preventDefault(); e.shiftKey ? ungroup() : makeGroup(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selSet.clear(); items.forEach((_, id) => selSet.add(id)); sel = [...selSet].pop() || null; redraw(); renderBar(); }
     else if (e.key === 'Escape') { selectOnly(null); redraw(); renderBar(); }
+    else if ((e.key === 'Enter' || e.key === 'F2') && sel && selSet.size === 1 && RECT.has(items.get(sel)?.kind)) { e.preventDefault(); editText(items.get(sel)); }
+    // Đang chọn 1 ghi chú/khung mà gõ phím chữ → vào sửa luôn, nối thêm chữ vào cuối
+    else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && sel && selSet.size === 1 && BOX.has(items.get(sel)?.kind)) { e.preventDefault(); editText(items.get(sel), e.key); }
     else if (!e.ctrlKey && !e.metaKey) { const t = TOOLS.find(t => t[2] === e.key.toUpperCase()); if (t) setTool(t[0]); }
   });
 
-  function editText(it) {
+  function editText(it, typed) {
+    if (canvas.querySelector('.wb-text-edit')) return;
     const d = it.data, r = canvas.getBoundingClientRect();
     const ta = h('textarea', { class: 'wb-text-edit' });
     ta.value = d.text || '';
@@ -380,11 +392,15 @@ export function mountBoards(el, { folder, sub, go }) {
     Object.assign(ta.style, { left: view.x + d.x * view.z + 'px', top: view.y + d.y * view.z + 'px', width: Math.max(120, d.w * view.z) + 'px', height: (grp ? Math.max(34, GROUP_HEAD * view.z) : Math.max(50, d.h * view.z)) + 'px', fontSize: st.size * view.z + 'px', background: it.kind === 'sticky' ? d.color : '#fff',
       fontFamily: fontCss(st.font), fontWeight: st.bold ? 700 : 500, fontStyle: st.italic ? 'italic' : 'normal', textDecoration: st.underline ? 'underline' : 'none', textAlign: st.align, color: st.tcolor || (it.kind === 'sticky' && isDark(d.color) ? '#fff' : '#1f2937') });
     if (grp) Object.assign(ta.style, { fontSize: 16 * view.z + 'px', fontWeight: 700, fontStyle: 'normal', textDecoration: 'none', textAlign: 'left', color: '#1f2937', fontFamily: "'Montserrat', sans-serif", padding: '6px 12px', whiteSpace: 'nowrap' });
-    canvas.append(ta); ta.focus(); ta.select();
+    canvas.append(ta); ta.focus();
+    // Đặt con trỏ ở cuối để gõ tiếp (không bôi đen cả đoạn – tránh lỡ tay gõ đè mất chữ cũ)
+    if (typed) ta.value += typed;
+    const end = ta.value.length; ta.setSelectionRange(end, end); ta.scrollTop = ta.scrollHeight;
     const t0 = Date.now();
-    const done = () => { if (!ta.isConnected) return; if (Date.now() - t0 < 400) { setTimeout(() => ta.focus(), 0); return; } const v = ta.value; ta.remove(); if (v !== (d.text || '')) patch(it.id, { ...d, text: v }); else if (!v && it.kind === 'text') removeItem(it.id); canvas.focus(); };
-    ta.addEventListener('blur', done);
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey || grp))) { e.preventDefault(); done(); } e.stopPropagation(); });
+    let finished = false;
+    const done = (force) => { if (finished || !ta.isConnected) return; if (!force && Date.now() - t0 < 400) { setTimeout(() => ta.focus(), 0); return; } finished = true; const v = ta.value; ta.remove(); if (v !== (d.text || '')) patch(it.id, { ...d, text: v }); else if (!v && it.kind === 'text') removeItem(it.id); canvas.focus(); };
+    ta.addEventListener('blur', () => done(false));
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey || grp))) { e.preventDefault(); done(true); } e.stopPropagation(); });
     void r;
   }
 
