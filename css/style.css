@@ -324,6 +324,9 @@ a.step-t:hover { color: var(--rd); }
 .wb-item { cursor: move; }
 .wb-handle { fill: #fff; stroke: var(--rd); stroke-width: 1.5; cursor: nwse-resize; }
 .wb-handle.anchored { fill: #059669; stroke: #fff; }
+.wb-cgrip { cursor: col-resize; }
+.wb-rgrip { cursor: row-resize; }
+.wb-grip { fill: #2563eb; stroke: #fff; stroke-width: 1.5; cursor: move; }
 .wb-cursor { position: absolute; pointer-events: none; font-size: 11px; padding: 1px 6px; border-radius: 3px; color: #fff; white-space: nowrap; transform: translate(10px, 10px); transition: left .08s linear, top .08s linear; }
 .wb-text-edit { position: absolute; border: 2px solid var(--rd); border-radius: 4px; padding: 8px; resize: none; outline: none; font: inherit; line-height: 1.35; z-index: 3; }
 .wb-zoom { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; background: var(--paper); border: 1.5px solid var(--line); border-radius: 4px; padding: 4px; }

@@ -1,16 +1,16 @@
 import db, { logActivity } from '../db.js';
 import { store } from '../store.js';
-import { h, toast, toastErr, prompt, confirmBox, throttle, popMenu, esc, fill, downloadNote } from '../ui.js';
+import { h, toast, toastErr, prompt, confirmBox, modal, throttle, popMenu, esc, fill, downloadNote } from '../ui.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const S = (tag, attrs = {}) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, v); return e; };
 const COLORS = ['#fde68a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#ddd6fe', '#fed7aa', '#1f2937', '#dc2626', '#2563eb', '#059669'];
 const TOOLS = [
   ['select', '🖱️ Chọn', 'V'], ['pan', '✋ Kéo', 'H'], ['sticky', '🟨 Ghi chú', 'N'], ['text', '🔤 Chữ', 'T'],
-  ['rect', '▭ Khung', 'R'], ['ellipse', '◯ Elip', 'O'], ['arrow', '➜ Mũi tên', 'A'], ['path', '✏️ Bút', 'P'],
+  ['rect', '▭ Khung', 'R'], ['ellipse', '◯ Elip', 'O'], ['arrow', '➜ Mũi tên', 'A'], ['path', '✏️ Bút', 'P'], ['table', '▦ Bảng', 'B'],
 ];
 const BOX = new Set(['sticky', 'text', 'rect', 'ellipse']);
-const RECT = new Set([...BOX, 'group', 'image']);   // hình có x, y, w, h
+const RECT = new Set([...BOX, 'group', 'image', 'table']);   // hình có x, y, w, h
 const IMG_SIDE = 1920, IMG_MAX_MB = 20;
 const GROUP_HEAD = 40;
 const FONTS = [
@@ -18,6 +18,51 @@ const FONTS = [
   ['Bitter (có chân)', "'Bitter', serif"], ['Lora (có chân)', "'Lora', serif"], ['Times New Roman', "'Times New Roman', Times, serif"],
   ['Patrick Hand (viết tay)', "'Patrick Hand', cursive"], ['Dancing Script (bay bướm)', "'Dancing Script', cursive"], ['Anonymous Pro (đơn cách)', "'Anonymous Pro', monospace"],
 ];
+// ---------- bảng (table) trên bảng trắng: cw = độ rộng cột, rh = chiều cao hàng, cells["r,c"] = chữ, mg = [[r, c, số hàng, số cột]] ô gộp ----------
+const TK = (r, c) => r + ',' + c;
+const sum = (a) => a.reduce((t, v) => t + v, 0);
+const tMerges = (d) => (d.mg || []).filter(m => m[2] * m[3] > 1);
+const tOwner = (d, r, c) => tMerges(d).find(([mr, mc, rs, cs]) => r >= mr && r < mr + rs && c >= mc && c < mc + cs);
+function tGeom(d) { const xs = [d.x], ys = [d.y]; d.cw.forEach(w => xs.push(xs.at(-1) + w)); d.rh.forEach(v => ys.push(ys.at(-1) + v)); return { xs, ys }; }
+function tFit(d, q) {
+  let { r0, r1, c0, c1 } = q, grow = true;
+  r0 = Math.max(0, r0); c0 = Math.max(0, c0); r1 = Math.min(d.rh.length - 1, r1); c1 = Math.min(d.cw.length - 1, c1);
+  while (grow) {
+    grow = false;
+    for (const [mr, mc, rs, cs] of tMerges(d)) {
+      if (mr > r1 || mr + rs - 1 < r0 || mc > c1 || mc + cs - 1 < c0) continue;
+      const n = [Math.min(r0, mr), Math.max(r1, mr + rs - 1), Math.min(c0, mc), Math.max(c1, mc + cs - 1)];
+      if (n[0] !== r0 || n[1] !== r1 || n[2] !== c0 || n[3] !== c1) { [r0, r1, c0, c1] = n; grow = true; }
+    }
+  }
+  return { ...q, r0, r1, c0, c1 };
+}
+// chèn (delta = 1) hoặc xoá (delta = -1) một hàng ('r') / cột ('c') ở vị trí at; ô gộp tự giãn / co như Excel / Word
+function tLine(d, axis, at, delta) {
+  const isR = axis === 'r';
+  const remap = (obj) => {
+    const out = {};
+    for (const [k, v] of Object.entries(obj || {})) {
+      const [r, c] = k.split(',').map(Number); let i = isR ? r : c;
+      if (delta > 0) { if (i >= at) i++; }
+      else if (i === at) { const m = tOwner(d, r, c); if (!(m && m[0] === r && m[1] === c && (isR ? m[2] : m[3]) > 1)) continue; }
+      else if (i > at) i--;
+      out[isR ? TK(i, c) : TK(r, i)] = v;
+    }
+    return out;
+  };
+  const mg = [];
+  for (const [r, c, rs, cs] of tMerges(d)) {
+    let s = isR ? r : c, n = isR ? rs : cs;
+    if (delta > 0) { if (s >= at) s++; else if (at < s + n) n++; }
+    else { if (s > at) s--; else if (at < s + n) n--; }
+    const m = isR ? [s, c, n, cs] : [r, s, rs, n];
+    if (m[2] * m[3] > 1) mg.push(m);
+  }
+  const cw = [...d.cw], rh = [...d.rh], arr = isR ? rh : cw;
+  if (delta > 0) arr.splice(at, 0, arr[Math.min(at, arr.length - 1)] || (isR ? 40 : 120)); else arr.splice(at, 1);
+  return { cells: remap(d.cells), al: remap(d.al), mg, cw, rh, w: sum(cw), h: sum(rh) };
+}
 const fontCss = (name) => (FONTS.find(f => f[0] === name) || FONTS[0])[1];
 const TEXT_COLORS = ['#1f2937', '#ffffff', '#64748b', '#dc2626', '#ea580c', '#ca8a04', '#059669', '#2563eb', '#7c3aed', '#db2777'];
 // Kiểu chữ mặc định theo loại hình
@@ -29,6 +74,8 @@ export function mountBoards(el, { folder, sub, go }) {
   const selSet = new Set();   // các đối tượng đang chọn (Shift + nhấp hoặc Shift + kéo vùng để chọn nhiều)
   const selectOnly = (id) => { selSet.clear(); if (id) selSet.add(id); sel = id || null; };
   let tool = 'select', color = COLORS[0];
+  let tsel = null;   // ô đang chọn trong bảng { id, r0, r1, c0, c1 }
+  const tcur = () => { if (!tsel || sel !== tsel.id || selSet.size !== 1) return null; const it = items.get(tsel.id); return it?.kind === 'table' ? tFit(it.data, tsel) : null; };
   let view = { x: 40, y: 30, z: 1 };
   const offs = [];
   const root = h('div', { class: 'wb' });
@@ -184,6 +231,7 @@ export function mountBoards(el, { folder, sub, go }) {
     const it = sel ? items.get(sel) : null;
     const on = !!(it && BOX.has(it.kind) && selSet.size === 1);
     fmt.classList.toggle('off', !on);
+    if (it?.kind === 'table' && selSet.size === 1) { fmt.classList.remove('off'); fill(fmt, tableBar(it)); return; }
     if (!on && [...selSet].filter(id => RECT.has(items.get(id)?.kind)).length >= 2) { fmt.classList.remove('off'); fill(fmt, alignBar()); return; }
     if (!on) { fill(fmt, h('span', { class: 'small muted' }, 'Chọn một ghi chú, chữ, khung hoặc elip để chỉnh kiểu chữ.')); return; }
     const st = styleOf(it);
@@ -214,6 +262,55 @@ export function mountBoards(el, { folder, sub, go }) {
       TEXT_COLORS.map(c => h('span', { class: `swatch sm ${st.tcolor === c ? 'on' : ''}`, style: { background: c }, title: c, onclick: () => set({ tcolor: c }) })),
       colIn);
   }
+  function tableBar(it) {
+    const d = it.data, R0 = d.rh.length, C0 = d.cw.length, T = tcur();
+    const at = T || { r0: R0 - 1, r1: R0 - 1, c0: C0 - 1, c1: C0 - 1 };
+    const set = (nd, keep) => { if (!keep) tsel = null; patch(it.id, nd, true).then(() => renderFmt()); };
+    const B = (label, title, run, dis) => h('button', { class: 'wb-tool fmt-i', title, disabled: dis, onclick: run }, label);
+    const delLines = (axis) => { let nd = d; const a = axis === 'r' ? at.r0 : at.c0, b = axis === 'r' ? at.r1 : at.c1; for (let i = b; i >= a; i--) nd = { ...nd, ...tLine(nd, axis, i, -1) }; set(nd); };
+    const hitM = T ? tMerges(d).filter(([r, c, rs, cs]) => r <= T.r1 && r + rs - 1 >= T.r0 && c <= T.c1 && c + cs - 1 >= T.c0) : [];
+    const merge = () => {
+      if (!T) return;
+      const cells = { ...(d.cells || {}) }, texts = [];
+      for (let r = T.r0; r <= T.r1; r++) for (let c = T.c0; c <= T.c1; c++) { const v = cells[TK(r, c)]; if (v && String(v).trim()) texts.push(v); delete cells[TK(r, c)]; }
+      if (texts.length) cells[TK(T.r0, T.c0)] = texts.join('\n');   // như Word: gộp ô thì nối chữ các ô lại, không mất chữ
+      const mg = tMerges(d).filter(([r, c]) => !(r >= T.r0 && r <= T.r1 && c >= T.c0 && c <= T.c1));
+      mg.push([T.r0, T.c0, T.r1 - T.r0 + 1, T.c1 - T.c0 + 1]);
+      const al = { ...(d.al || {}) }; if (!al[TK(T.r0, T.c0)]) al[TK(T.r0, T.c0)] = 'center';
+      tsel = { id: it.id, r0: T.r0, c0: T.c0, r1: T.r1, c1: T.c1 };
+      set({ cells, mg, al }, true);
+    };
+    const unmerge = () => { tsel = { id: it.id, r0: T.r0, c0: T.c0, r1: T.r0, c1: T.c0 }; set({ mg: tMerges(d).filter(m => !hitM.includes(m)) }, true); };
+    const align = (v) => { if (!T) return; const al = { ...(d.al || {}) }; for (let r = T.r0; r <= T.r1; r++) for (let c = T.c0; c <= T.c1; c++) al[TK(r, c)] = v; set({ al }, true); };
+    const size = d.size || 14;
+    const L = (a, b, c) => `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M${a} 3h${b}M2 6.5h12M${c} 10h${16 - 2 * c}M2 13.5h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+    const AL = (v, icon, title) => h('button', { class: 'wb-tool fmt-i', title, disabled: !T, onclick: () => align(v), html: icon });
+    return [h('span', { class: 'fmt-lb' }, `Bảng ${R0}×${C0}` + (T ? ` · chọn ${T.r1 - T.r0 + 1}×${T.c1 - T.c0 + 1} ô` : '')),
+      B('＋ Hàng trên', 'Chèn hàng phía trên ô đang chọn', () => set(tLine(d, 'r', at.r0, 1))),
+      B('＋ Hàng dưới', 'Chèn hàng phía dưới ô đang chọn', () => set(tLine(d, 'r', at.r1 + 1, 1))),
+      B('＋ Cột trái', 'Chèn cột bên trái ô đang chọn', () => set(tLine(d, 'c', at.c0, 1))),
+      B('＋ Cột phải', 'Chèn cột bên phải ô đang chọn', () => set(tLine(d, 'c', at.c1 + 1, 1))),
+      B('− Hàng', 'Xoá các hàng đang chọn', () => delLines('r'), !T || T.r1 - T.r0 + 1 >= R0),
+      B('− Cột', 'Xoá các cột đang chọn', () => delLines('c'), !T || T.c1 - T.c0 + 1 >= C0),
+      h('span', { class: 'wb-sep' }),
+      B('⊞ Gộp ô', 'Gộp các ô đang chọn thành một ô (chữ trong các ô được nối lại)', merge, !T || (T.r0 === T.r1 && T.c0 === T.c1)),
+      B('⊟ Tách ô', 'Tách ô đã gộp', unmerge, !hitM.length),
+      h('span', { class: 'wb-sep' }),
+      AL('left', L(2, 9, 2), 'Căn trái các ô đang chọn'), AL('center', L(4.5, 7, 4), 'Căn giữa các ô đang chọn'), AL('right', L(7, 7, 6), 'Căn phải các ô đang chọn'),
+      h('span', { class: 'wb-sep' }),
+      h('button', { class: `wb-tool fmt-i ${d.head !== false ? 'on' : ''}`, title: 'Tô màu và in đậm hàng đầu tiên (đổi màu bằng các ô màu ở thanh trên)', onclick: () => set({ head: d.head === false }, true) }, 'Hàng tiêu đề'),
+      B('A−', 'Chữ nhỏ hơn', () => set({ size: Math.max(9, size - 1) }, true)), h('span', { class: 'small', style: { minWidth: '22px', textAlign: 'center' } }, size), B('A+', 'Chữ lớn hơn', () => set({ size: Math.min(40, size + 1) }, true)),
+      h('span', { class: 'small muted', style: { marginLeft: '8px' } }, 'Nhấp ô để chọn · kéo để chọn nhiều ô · nhấp đúp / gõ phím để nhập · kéo ✥ để di chuyển · kéo đường kẻ để đổi cỡ')];
+  }
+  async function newTable(p) {
+    const rIn = h('input', { class: 'input', type: 'number', min: 1, max: 30, value: 3 }), cIn = h('input', { class: 'input', type: 'number', min: 1, max: 15, value: 3 });
+    const r = await modal('Tạo bảng', h('div', { class: 'row', style: { gap: '12px' } }, h('label', { class: 'field grow' }, h('span', {}, 'Số hàng'), rIn), h('label', { class: 'field grow' }, h('span', {}, 'Số cột'), cIn)), [{ label: 'Huỷ', value: null }, { label: 'Tạo bảng', value: 'ok', primary: true }]);
+    if (r !== 'ok') return;
+    const R0 = Math.min(30, Math.max(1, Math.round(+rIn.value || 3))), C0 = Math.min(15, Math.max(1, Math.round(+cIn.value || 3)));
+    const cw = Array(C0).fill(130), rh = Array(R0).fill(40);
+    const it = await createItem('table', { x: Math.round(p.x), y: Math.round(p.y), w: sum(cw), h: sum(rh), cw, rh, cells: {}, mg: [], al: {}, head: true, size: 14, color: color === COLORS[0] ? '#bfdbfe' : color });
+    if (it) { tsel = { id: it.id, r0: 0, c0: 0, r1: 0, c1: 0 }; redraw(); renderBar(); canvas.focus(); }
+  }
   function setTool(t) { tool = t; canvas.className = `wb-canvas tool-${t === 'select' ? 'select' : t === 'pan' ? 'pan' : 'draw'}`; renderBar(); }
 
   // ---------- vẽ ----------
@@ -236,6 +333,34 @@ export function mountBoards(el, { folder, sub, go }) {
       t.style.cssText = `height:100%;display:flex;align-items:center;gap:8px;padding:0 14px;font:700 16px 'Montserrat',sans-serif;color:${isDark(col) ? '#fff' : '#1f2937'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
       t.innerHTML = `<span style="opacity:.6">▣</span><span style="overflow:hidden;text-overflow:ellipsis">${esc(d.text || 'Nhóm chưa đặt tên')}</span><span style="margin-left:auto;font-weight:500;font-size:12px;opacity:.65">${contents(it).filter(c => c.kind !== 'arrow' && c.kind !== 'path').length} mục</span>`;
       fo.append(t); g.append(fo);
+    } else if (it.kind === 'table') {
+      const { xs, ys } = tGeom(d), head = d.head !== false, col = d.color || '#bfdbfe', fs = d.size || 14;
+      g.append(S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, fill: '#fff' }));
+      const cov = new Set(); tMerges(d).forEach(([r, c, rs, cs]) => { for (let i = r; i < r + rs; i++) for (let j = c; j < c + cs; j++) if (i !== r || j !== c) cov.add(TK(i, j)); });
+      for (let r = 0; r < d.rh.length; r++) for (let c = 0; c < d.cw.length; c++) {
+        if (cov.has(TK(r, c))) continue;
+        const m = tOwner(d, r, c), rs = m ? m[2] : 1, cs = m ? m[3] : 1;
+        const X = xs[c], Y = ys[r], W = xs[Math.min(c + cs, d.cw.length)] - X, H = ys[Math.min(r + rs, d.rh.length)] - Y;
+        g.append(S('rect', { x: X, y: Y, width: W, height: H, fill: head && r === 0 ? col : '#fff', 'fill-opacity': head && r === 0 ? .7 : 1, stroke: '#94a3b8', 'stroke-width': 1 }));
+        const t = d.cells?.[TK(r, c)];
+        if (t) {
+          const fo = S('foreignObject', { x: X, y: Y, width: Math.max(4, W), height: Math.max(4, H) });
+          const div = document.createElement('div');
+          div.style.cssText = `width:100%;height:100%;box-sizing:border-box;padding:4px 8px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;font:${head && r === 0 ? 700 : 500} ${fs}px 'Montserrat',sans-serif;color:${head && r === 0 && isDark(col) ? '#fff' : '#1f2937'};text-align:${d.al?.[TK(r, c)] || 'left'};white-space:pre-wrap;word-break:break-word;line-height:1.3;`;
+          div.textContent = t; fo.append(div); g.append(fo);
+        }
+      }
+      g.append(S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, fill: 'none', stroke: '#475569', 'stroke-width': 1.6 }));
+      const T = tcur();
+      if (T && T.id === it.id) g.append(S('rect', { x: xs[T.c0], y: ys[T.r0], width: xs[T.c1 + 1] - xs[T.c0], height: ys[T.r1 + 1] - ys[T.r0], fill: 'rgba(37,99,235,.12)', stroke: '#2563eb', 'stroke-width': 2 / view.z, 'pointer-events': 'none' }));
+      if (sel === it.id && selSet.size === 1) {
+        const k = 4 / view.z;
+        xs.slice(1).forEach((x, i) => g.append(S('rect', { class: 'wb-cgrip', 'data-handle': 'col:' + i, x: x - k, y: d.y, width: 2 * k, height: d.h, fill: 'transparent' })));
+        ys.slice(1).forEach((y, i) => g.append(S('rect', { class: 'wb-rgrip', 'data-handle': 'row:' + i, x: d.x, y: y - k, width: d.w, height: 2 * k, fill: 'transparent' })));
+        const gx = d.x - 16 / view.z, gy = d.y - 16 / view.z, gr = 11 / view.z;
+        g.append(S('circle', { class: 'wb-grip', 'data-handle': 'grip', cx: gx, cy: gy, r: gr }));
+        const tt = S('text', { x: gx, y: gy + 5 / view.z, 'text-anchor': 'middle', 'font-size': 14 / view.z, fill: '#fff', 'pointer-events': 'none' }); tt.textContent = '✥'; g.append(tt);
+      }
     } else if (it.kind === 'sticky') {
       g.append(S('rect', { x: d.x + 3, y: d.y + 4, width: d.w, height: d.h, rx: 4, fill: 'rgba(0,0,0,.08)' }), S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, rx: 4, fill: d.color || COLORS[0] }));
       g.append(textBox(it, isDark(d.color) ? '#fff' : '#1f2937'));
@@ -385,13 +510,21 @@ export function mountBoards(el, { folder, sub, go }) {
       // vì bảng vẽ lại sau lần nhấp đầu làm trình duyệt bỏ lỡ nhấp đúp)
       const now = Date.now();
       if (!e.shiftKey && !handle && lastClick && lastClick.id === id && now - lastClick.t < 450 && Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) < 6 && RECT.has(it.kind) && it.kind !== 'image') {
-        lastClick = null; selectOnly(id); redraw(); renderBar(); editText(it); return;
+        lastClick = null; selectOnly(id);
+        if (it.kind === 'table') { const c = cellAt(it, p); tsel = { id, r0: c.r, c0: c.c, r1: c.r, c1: c.c }; redraw(); renderBar(); editCell(it, c.r, c.c); return; }
+        redraw(); renderBar(); editText(it); return;
       }
       lastClick = { id, t: now, x: e.clientX, y: e.clientY };
+      if (e.shiftKey && it.kind === 'table' && tcur()?.id === id) { const a = cellAt(it, null, tsel.r0, tsel.c0), b = cellAt(it, p); tsel = tFit(it.data, { id, r0: Math.min(a.r, b.r), r1: Math.max(a.r + a.rs, b.r + b.rs) - 1, c0: Math.min(a.c, b.c), c1: Math.max(a.c + a.cs, b.c + b.cs) - 1 }); redraw(); renderBar(); return; }
       if (e.shiftKey) { if (selSet.has(id)) { selSet.delete(id); sel = [...selSet].pop() || null; } else { selSet.add(id); sel = id; } redraw(); renderBar(); return; }
+      const wasOnly = sel === id && selSet.size === 1;
       if (!selSet.has(id)) selectOnly(id); else sel = id;
+      if (tsel && tsel.id !== id) tsel = null;
+      // bảng đang được chọn: nhấp vào ô = chọn ô, kéo = chọn nhiều ô (di chuyển bảng bằng nút ✥)
+      if (it.kind === 'table' && wasOnly && !handle && !e.shiftKey) { const c = cellAt(it, p); tsel = { id, r0: c.r, c0: c.c, r1: c.r + c.rs - 1, c1: c.c + c.cs - 1 }; drag = { mode: 'cells', id, a: c, start: p }; redraw(); renderBar(); return; }
+      if (it.kind === 'table' && !wasOnly) tsel = null;
       redraw(); renderBar();
-      if (handle) { drag = { mode: 'resize', handle, id, start: p, orig: structuredClone(it.data) }; return; }
+      if (handle && handle !== 'grip') { drag = { mode: 'resize', handle, id, start: p, orig: structuredClone(it.data) }; return; }
       // kéo: mọi mục đang chọn + những gì nằm trong các nhóm đang chọn
       const ids = new Set(selSet);
       for (const x of selSet) { const gi = items.get(x); if (gi?.kind === 'group') contents(gi).forEach(c => ids.add(c.id)); }
@@ -401,6 +534,7 @@ export function mountBoards(el, { folder, sub, go }) {
     // tạo mới
     const base = { color };
     if (tool === 'sticky') { createItem('sticky', { ...base, x: p.x - 90, y: p.y - 70, w: 180, h: 140, text: '' }, true); setTool('select'); return; }
+    if (tool === 'table') { newTable(p); setTool('select'); return; }
     if (tool === 'text') { createItem('text', { ...base, color: color, x: p.x, y: p.y - 20, w: 260, h: 60, text: '', size: 20 }, true); setTool('select'); return; }
     if (tool === 'rect' || tool === 'ellipse') drag = { mode: 'create', kind: tool, temp: { id: 'temp', kind: tool, z: 1e9, data: { ...base, x: p.x, y: p.y, w: 1, h: 1, text: '' } }, start: p };
     if (tool === 'arrow') { const A = itemAt(p); drag = { mode: 'create', kind: 'arrow', temp: { id: 'temp', kind: 'arrow', z: 1e9, data: { ...base, x1: p.x, y1: p.y, x2: p.x, y2: p.y, from: A?.id || null, to: null } }, start: p }; }
@@ -422,6 +556,13 @@ export function mountBoards(el, { folder, sub, go }) {
       for (const it of items.values()) { const b = bbox(it); if (b.x >= m.x && b.y >= m.y && b.x + b.w <= m.x + m.w && b.y + b.h <= m.y + m.h) selSet.add(it.id); }
       sel = [...selSet].pop() || null; redraw(); return;
     }
+    if (drag.mode === 'cells') {
+      const it = items.get(drag.id); if (!it) return;
+      const a = drag.a, b = cellAt(it, p);
+      const n = tFit(it.data, { id: drag.id, r0: Math.min(a.r, b.r), r1: Math.max(a.r + a.rs, b.r + b.rs) - 1, c0: Math.min(a.c, b.c), c1: Math.max(a.c + a.cs, b.c + b.cs) - 1 });
+      if (JSON.stringify(n) !== JSON.stringify(tsel)) { tsel = n; redraw(); }
+      return;
+    }
     if (drag.mode === 'move') {
       const list = [];
       // Tự căn hàng (như Canva): mép/tâm gần khớp với mục khác thì hút vào và hiện đường gióng. Giữ Alt để tắt.
@@ -438,6 +579,15 @@ export function mountBoards(el, { folder, sub, go }) {
       drag.moved = true; redraw(); sendMoves(list);
     } else if (drag.mode === 'resize') {
       const it = items.get(drag.id); const o = drag.orig;
+      if (it.kind === 'table' && (drag.handle === 'se' || /^(col|row):/.test(drag.handle))) {
+        const [kind, ks] = drag.handle.split(':'), k = +ks;
+        let cw = [...o.cw], rh = [...o.rh];
+        if (kind === 'se') { const kx = Math.max(0.2, (o.w + dx) / o.w), ky = Math.max(0.2, (o.h + dy) / o.h); cw = o.cw.map(v => Math.max(30, Math.round(v * kx))); rh = o.rh.map(v => Math.max(24, Math.round(v * ky))); }
+        else if (kind === 'col') cw[k] = Math.max(30, Math.round(o.cw[k] + dx));
+        else rh[k] = Math.max(24, Math.round(o.rh[k] + dy));
+        Object.assign(it.data, { cw, rh, w: sum(cw), h: sum(rh) });
+        drag.moved = true; redraw(); sendMove(it.id, it.data); return;
+      }
       if (drag.handle === 'se' && it.kind === 'image') { const k = Math.max(40 / o.w, (o.w + dx) / o.w); Object.assign(it.data, { w: Math.round(o.w * k), h: Math.round(o.h * k) }); }
       else if (drag.handle === 'se') Object.assign(it.data, { w: Math.max(it.kind === 'group' ? 120 : 30, o.w + dx), h: Math.max(it.kind === 'group' ? GROUP_HEAD + 30 : 24, o.h + dy) });
       if (drag.handle === 'p1' || drag.handle === 'p2') {
@@ -460,6 +610,7 @@ export function mountBoards(el, { folder, sub, go }) {
     const dr = drag; drag = null; canvas.style.cursor = '';
     if (!dr) return;
     if (dr.mode === 'marquee') { redraw(); renderBar(); return; }
+    if (dr.mode === 'cells') { renderBar(); return; }
     if (dr.mode === 'move' && dr.moved) for (const [id, o] of dr.origs) touch(id, items.has(id) ? { ...snap(id), data: structuredClone(o) } : null);
     if (dr.mode === 'resize' && dr.moved && items.has(dr.id)) touch(dr.id, { ...snap(dr.id), data: structuredClone(dr.orig) });
     if (dr.mode === 'move' && dr.moved) for (const id of dr.origs.keys()) { const it = items.get(id); if (it) { if (it.kind === 'arrow') freezeArrow(it.data); patch(id, it.data); } }
@@ -481,21 +632,88 @@ export function mountBoards(el, { folder, sub, go }) {
     if (canvas.querySelector('.wb-text-edit')) return;
     const g = e.target.closest('.wb-item');
     const it = items.get(g ? g.getAttribute('data-id') : lastDown);
-    if (it && RECT.has(it.kind) && it.kind !== 'image') editText(it);
+    if (it && RECT.has(it.kind) && it.kind !== 'image' && it.kind !== 'table') editText(it);
   });
   canvas.addEventListener('keydown', (e) => {
     if (e.target.closest('.wb-text-edit')) return;
+    const T = tcur(), tb = sel && selSet.size === 1 && items.get(sel)?.kind === 'table' ? items.get(sel) : null;
+    if (tb && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!T && (e.key === 'Enter' || e.key === 'F2')) { e.preventDefault(); tsel = { id: tb.id, r0: 0, c0: 0, r1: 0, c1: 0 }; redraw(); renderBar(); editCell(tb, 0, 0); return; }
+      if (T) {
+        const d = tb.data;
+        if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const cells = { ...(d.cells || {}) }; for (let r = T.r0; r <= T.r1; r++) for (let c = T.c0; c <= T.c1; c++) delete cells[TK(r, c)]; patch(tb.id, { cells }, true); return; }
+        if (e.key === 'Escape') { tsel = null; redraw(); renderBar(); return; }
+        if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); editCell(tb, T.r0, T.c0); return; }
+        const mv = { ArrowUp: [T.r0 - 1, T.c0], ArrowDown: [T.r1 + 1, T.c0], ArrowLeft: [T.r0, T.c0 - 1], ArrowRight: [T.r0, T.c1 + 1], Tab: e.shiftKey ? [T.r0, T.c0 - 1] : [T.r0, T.c1 + 1] }[e.key];
+        if (mv) { e.preventDefault(); const c = cellAt(tb, null, Math.min(d.rh.length - 1, Math.max(0, mv[0])), Math.min(d.cw.length - 1, Math.max(0, mv[1]))); tsel = { id: tb.id, r0: c.r, c0: c.c, r1: c.r + c.rs - 1, c1: c.c + c.cs - 1 }; redraw(); renderBar(); return; }
+        if (e.key.length === 1) { e.preventDefault(); editCell(tb, T.r0, T.c0, e.key); return; }
+      }
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selSet.size) { e.preventDefault(); delSel(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); dup(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') { e.preventDefault(); e.shiftKey ? ungroup() : makeGroup(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selSet.clear(); items.forEach((_, id) => selSet.add(id)); sel = [...selSet].pop() || null; redraw(); renderBar(); }
     else if (e.key === 'Escape') { selectOnly(null); redraw(); renderBar(); }
-    else if ((e.key === 'Enter' || e.key === 'F2') && sel && selSet.size === 1 && RECT.has(items.get(sel)?.kind) && items.get(sel)?.kind !== 'image') { e.preventDefault(); editText(items.get(sel)); }
+    else if ((e.key === 'Enter' || e.key === 'F2') && sel && selSet.size === 1 && RECT.has(items.get(sel)?.kind) && !['image', 'table'].includes(items.get(sel)?.kind)) { e.preventDefault(); editText(items.get(sel)); }
     // Đang chọn 1 ghi chú/khung mà gõ phím chữ → vào sửa luôn, nối thêm chữ vào cuối
     else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && sel && selSet.size === 1 && BOX.has(items.get(sel)?.kind)) { e.preventDefault(); editText(items.get(sel), e.key); }
     else if (!e.ctrlKey && !e.metaKey) { const t = TOOLS.find(t => t[2] === e.key.toUpperCase()); if (t) setTool(t[0]); }
   });
 
+  // ô ở điểm p (hoặc ô r, c); ô nằm trong vùng gộp → trả về ô gộp
+  function cellAt(it, p, r, c) {
+    const d = it.data;
+    if (p) {
+      const { xs, ys } = tGeom(d);
+      c = 0; while (c < d.cw.length - 1 && p.x >= xs[c + 1]) c++;
+      r = 0; while (r < d.rh.length - 1 && p.y >= ys[r + 1]) r++;
+    }
+    const m = tOwner(d, r, c);
+    return m ? { r: m[0], c: m[1], rs: m[2], cs: m[3] } : { r, c, rs: 1, cs: 1 };
+  }
+  function editCell(it, r, c, typed) {
+    if (canvas.querySelector('.wb-text-edit')) return;
+    const d = it.data, { xs, ys } = tGeom(d), m = tOwner(d, r, c);
+    if (m) [r, c] = m;
+    const rs = m ? m[2] : 1, cs = m ? m[3] : 1, k = TK(r, c);
+    const X = xs[c], Y = ys[r], W = xs[c + cs] - X, H = ys[r + rs] - Y, fs = d.size || 14;
+    const ta = h('textarea', { class: 'wb-text-edit' });
+    ta.value = (d.cells?.[k] || '') + (typed || '');
+    Object.assign(ta.style, { left: view.x + X * view.z + 'px', top: view.y + Y * view.z + 'px', width: Math.max(80, W * view.z) + 'px', height: Math.max(30, H * view.z) + 'px', fontSize: fs * view.z + 'px', fontFamily: "'Montserrat', sans-serif", fontWeight: d.head !== false && r === 0 ? 700 : 500, textAlign: d.al?.[k] || 'left', padding: `${4 * view.z}px ${8 * view.z}px`, background: '#fff', color: '#1f2937', lineHeight: 1.3 });
+    canvas.append(ta); ta.focus();
+    const end = ta.value.length; ta.setSelectionRange(end, end);
+    const t0 = Date.now(); let finished = false;
+    const done = (force, next) => {
+      if (finished || !ta.isConnected) return;
+      if (!force && Date.now() - t0 < 400) { setTimeout(() => ta.focus(), 0); return; }
+      finished = true; const v = ta.value; ta.remove();
+      const cur = items.get(it.id);
+      if (cur && v !== (cur.data.cells?.[k] || '')) {
+        const cells = { ...(cur.data.cells || {}) }; if (v) cells[k] = v; else delete cells[k];
+        // chữ dài hơn ô → hàng tự cao lên cho vừa (ô không gộp nhiều hàng)
+        let rh = cur.data.rh;
+        if (rs === 1 && v) {
+          const width = Math.max(20, W - 16), cw = fs * 0.56;
+          const lines = v.split('\n').reduce((t, ln) => t + Math.max(1, Math.ceil(ln.length * cw / width)), 0);
+          const need = Math.ceil(lines * fs * 1.3 + 10);
+          if (need > rh[r]) { rh = [...rh]; rh[r] = need; }
+        }
+        patch(it.id, { cells, rh, h: sum(rh) }, true);
+      }
+      if (next && cur) {
+        const d2 = cur.data; let nr = r, nc = c + cs;
+        if (next < 0) { nc = c - 1; if (nc < 0) { nr = r - 1; nc = d2.cw.length - 1; } } else if (nc >= d2.cw.length) { nr = r + rs; nc = 0; }
+        if (nr >= 0 && nr < d2.rh.length) { const o = cellAt(cur, null, nr, nc); tsel = { id: it.id, r0: o.r, c0: o.c, r1: o.r + o.rs - 1, c1: o.c + o.cs - 1 }; redraw(); renderBar(); editCell(cur, o.r, o.c); return; }
+      }
+      redraw(); renderBar(); canvas.focus();
+    };
+    ta.addEventListener('blur', () => done(false));
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey && !e.altKey)) { e.preventDefault(); done(true); }
+      else if (e.key === 'Tab') { e.preventDefault(); done(true, e.shiftKey ? -1 : 1); }
+      e.stopPropagation();
+    });
+  }
   function editText(it, typed) {
     if (canvas.querySelector('.wb-text-edit')) return;
     const d = it.data, r = canvas.getBoundingClientRect();
@@ -656,7 +874,7 @@ export function mountBoards(el, { folder, sub, go }) {
   }
   let offItems = null;
   async function openBoard(id) {
-    offItems?.(); room?.close(); items = new Map(); selectOnly(null); cursors.clear(); tx = null; undoStack = []; redoStack = [];
+    tsel = null; offItems?.(); room?.close(); items = new Map(); selectOnly(null); cursors.clear(); tx = null; undoStack = []; redoStack = [];
     board = boards.find(b => b.id === id) || null;
     go(board?.id || null);
     renderPick(); renderBar();
