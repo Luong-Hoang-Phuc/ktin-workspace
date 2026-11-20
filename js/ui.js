@@ -14,6 +14,8 @@ export function h(tag, attrs = {}, ...children) {
     if (c == null || c === false) continue;
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
+  // nút chỉ có biểu tượng: đọc được tên bằng trình đọc màn hình (lấy từ title)
+  if ((tag === 'button' || tag === 'a') && attrs?.title && !el.hasAttribute('aria-label') && (el.textContent || '').trim().length <= 2) el.setAttribute('aria-label', attrs.title);
   return el;
 }
 
@@ -49,13 +51,30 @@ export function fileIcon(name = '', mime = '') {
 }
 
 // Thông báo nhỏ góc màn hình
-export function toast(msg, type = 'info') {
+// opts.action = { label, run } → nút bấm trong thông báo (VD “Hoàn tác”); opts.ms = thời gian hiện
+export function toast(msg, type = 'info', opts = {}) {
   let box = document.getElementById('toasts');
-  if (!box) { box = h('div', { id: 'toasts' }); document.body.append(box); }
-  const t = h('div', { class: `toast toast-${type}` }, msg);
+  if (!box) { box = h('div', { id: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(box); }
+  const ms = opts.ms || (opts.action ? 8000 : type === 'error' ? 6000 : 3200);
+  const t = h('div', { class: `toast toast-${type} ${opts.action ? 'has-act' : ''}` }, h('span', {}, msg),
+    opts.action ? h('button', { class: 'toast-act', onclick: async () => { t.remove(); try { await opts.action.run(); } catch (e) { toastErr(e); } } }, opts.action.label) : null,
+    opts.action || type === 'error' ? h('button', { class: 'toast-x', title: 'Đóng', 'aria-label': 'Đóng thông báo', onclick: () => t.remove() }, '×') : null);
   box.append(t);
-  setTimeout(() => t.classList.add('out'), 3200);
-  setTimeout(() => t.remove(), 3600);
+  let left = ms, started = Date.now(), timer;
+  const arm = () => { started = Date.now(); timer = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, left); };
+  t.addEventListener('mouseenter', () => { clearTimeout(timer); left -= Date.now() - started; });   // rê chuột vào thì giữ thông báo
+  t.addEventListener('mouseleave', () => { left = Math.max(left, 1500); arm(); });
+  arm();
+  return t;
+}
+// Khoảnh khắc hoàn thành: pháo giấy nhẹ + thông báo
+export function celebrate(text, big = false) {
+  const wrap = h('div', { class: `confetti ${big ? 'big' : ''}`, 'aria-hidden': 'true' });
+  const colors = ['#b5462f', '#4f6b3a', '#3b5a7a', '#c69c6d', '#a67c00', '#be185d'];
+  for (let i = 0; i < (big ? 90 : 36); i++) wrap.append(h('i', { style: { left: Math.random() * 100 + '%', background: colors[i % colors.length], animationDelay: Math.random() * 0.5 + 's', animationDuration: 1.6 + Math.random() * 1.4 + 's', transform: `rotate(${Math.random() * 360}deg)` } }));
+  document.body.append(wrap);
+  setTimeout(() => wrap.remove(), 3600);
+  if (text) toast(text, 'ok', { ms: big ? 6000 : 3600 });
 }
 // Dịch các thông báo lỗi thường gặp (Supabase, trình duyệt) sang tiếng Việt
 const ERR_VI = [
@@ -98,8 +117,8 @@ export async function prompt(title, label, value = '', placeholder = '') {
   const r = await modal(title, body, [{ label: 'Huỷ', value: null }, { label: 'Đồng ý', value: 'ok', primary: true }]);
   return r === 'ok' ? (resolveEnter ?? inp.value).trim() : null;
 }
-export async function confirmBox(title, text, danger = true) {
-  const r = await modal(title, h('p', {}, text), [{ label: 'Huỷ', value: null }, { label: 'Xác nhận', value: 'ok', primary: !danger, danger }]);
+export async function confirmBox(title, text, danger = true, okLabel = 'Xác nhận') {
+  const r = await modal(title, h('p', {}, text), [{ label: 'Huỷ', value: null }, { label: okLabel, value: 'ok', primary: !danger, danger }]);
   return r === 'ok';
 }
 

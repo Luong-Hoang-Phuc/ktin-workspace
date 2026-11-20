@@ -9,5 +9,6 @@ $ESBUILD js/*.js js/views/*.js --minify --format=esm --target=es2022 \
   --legal-comments=none --outbase=js --outdir=dist/js --log-level=warning
 cp js/vendor/*.js dist/js/vendor/
 $ESBUILD css/style.css --minify --outfile=dist/css/style.css --log-level=warning
+$ESBUILD css/dark.css --minify --outfile=dist/css/dark.css --log-level=warning
 cp index.html robots.txt _headers dist/
 echo "Đã đóng gói vào dist/"

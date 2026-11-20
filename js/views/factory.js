@@ -5,6 +5,7 @@
 import db, { logActivity } from '../db.js';
 import { store, on, jsonSetting, productOf } from '../store.js';
 import { h, fill, toast, toastErr, prompt, confirmBox, modal, popMenu, avatar } from '../ui.js';
+import { softDelete } from '../trash.js';
 import { MACHINE_COLUMNS, PHASES, LINES } from './templates.js';
 import { parseNum, fmtValue } from '../formula.js';
 
@@ -119,7 +120,7 @@ export function mountFactoryTree(el, { product, readOnly = false }) {
       !readOnly ? h('button', { class: 'icon-btn', title: 'Tuỳ chọn', onclick: (e) => popMenu(e.currentTarget, [
         { icon: '⬆️', label: 'Lên trên', run: () => moveNode(node, -1) }, { icon: '⬇️', label: 'Xuống dưới', run: () => moveNode(node, 1) },
         { icon: '🔁', label: 'Liên kết máy khác', run: () => relink(node) },
-        '-', { icon: '✕', label: 'Gỡ khỏi công đoạn', danger: true, run: async () => { if (await confirmBox('Gỡ máy?', `Gỡ “${node.name}” khỏi ${stage?.name}?`)) { await db.remove('factory_nodes', node.id).catch(toastErr); sel = null; renderPanel(); } } }]) }, '⋯') : null,
+        '-', { icon: '✕', label: 'Gỡ khỏi công đoạn', danger: true, run: async () => { sel = null; renderPanel(); await softDelete('factory_nodes', node.id, { label: `${node.name} (khỏi ${stage?.name || 'công đoạn'})`, what: 'máy khỏi sơ đồ' }).catch(toastErr); } }]) }, '⋯') : null,
       h('button', { class: 'icon-btn', title: 'Đóng', onclick: () => select(node.id) }, '✕'));
     if (!m) { fill(panel, head, !readOnly ? h('button', { class: 'btn btn-sm btn-block', onclick: () => relink(node) }, 'Liên kết dữ liệu máy') : null); return; }
     const save = async (c, raw) => {
@@ -172,7 +173,7 @@ export function mountFactoryTree(el, { product, readOnly = false }) {
       { icon: '⬅️', label: 'Lên trước', run: () => swap(same, i, i - 1) },
       { icon: '➡️', label: 'Ra sau', run: () => swap(same, i, i + 1) },
       '-',
-      { icon: '🗑️', label: 'Xoá công đoạn', danger: true, run: async () => { if (await confirmBox('Xoá công đoạn?', `Xoá “${s.name}” và các máy bên dưới khỏi sơ đồ? (Dữ liệu máy trong bảng thiết bị vẫn giữ.)`)) { for (const k of st.kids(s.id)) await db.remove('factory_nodes', k.id).catch(() => {}); await db.remove('factory_nodes', s.id).catch(toastErr); } } },
+      { icon: '🗑️', label: 'Xoá công đoạn', danger: true, run: async () => { if (await confirmBox('Xoá công đoạn?', `Xoá “${s.name}” và các máy bên dưới khỏi sơ đồ? (Dữ liệu máy trong bảng thiết bị vẫn giữ. Có thể khôi phục trong 🗑 Thùng rác 30 ngày.)`, true, `Xoá công đoạn “${s.name}”`)) await softDelete('factory_nodes', s.id, { label: s.name, what: 'công đoạn' }).catch(toastErr); } },
     ]);
   }
   async function swap(list, i, j) {
@@ -244,8 +245,8 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
     const ns = stageNodes(m.id);
     try {
       if (!stageId) {
-        if (ns.length && !await confirmBox('Gỡ máy khỏi công đoạn?', `Gỡ “${m.name}” khỏi công đoạn “${st.nodes.find(x => x.id === ns[0].parent_id)?.name || ''}” trên Sơ đồ nhà máy? (Dữ liệu máy trong bảng thiết bị vẫn giữ nguyên.)`)) { render(); return; }
-        for (const n of ns) await db.remove('factory_nodes', n.id);
+        // không hỏi lại: có nút “Hoàn tác” ngay trong thông báo (dữ liệu máy trong bảng thiết bị vẫn giữ nguyên)
+        for (const n of ns) await softDelete('factory_nodes', n.id, { label: `${m.name} (khỏi công đoạn “${st.nodes.find(x => x.id === n.parent_id)?.name || ''}”)`, what: 'máy khỏi sơ đồ' });
       } else if (ns.length) await db.update('factory_nodes', ns[0].id, { parent_id: stageId, position: st.kids(stageId).length, updated_by: store.user.id });
       else { const n = await db.insert('factory_nodes', { product_id: null, parent_id: stageId, kind: 'machine', name: m.name, machine_id: m.id, position: st.kids(stageId).length, updated_by: store.user.id }); if (!st.nodes.some(x => x.id === n.id)) st.nodes.push(n); }
       if (stageId) logActivity(store.user, `gắn máy ${m.name} vào công đoạn`, st.nodes.find(x => x.id === stageId)?.name || '');
@@ -331,8 +332,7 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
   async function delParam(c) { if (await confirmBox('Xoá thông số?', `Xoá thông số “${c.label}” khỏi bảng thiết bị?`)) await saveMachineCols(machineCols().filter(x => x.key !== c.key)); }
   async function del(m) {
     const used = st.nodes.filter(n => n.machine_id === m.id).length;
-    if (!await confirmBox('Xoá máy?', used ? `“${m.name}” đang nằm trên sơ đồ nhà máy. Xoá sẽ gỡ máy khỏi sơ đồ.` : `Xoá “${m.name}”?`)) return;
-    try { await db.remove('machines', m.id); toast('Đã xoá', 'ok'); } catch (e) { toastErr(e); }
+    try { await softDelete('machines', m.id, { label: m.name + (used ? ' (kèm vị trí trên sơ đồ)' : ''), what: 'máy' }); } catch (e) { toastErr(e); }
   }
   return () => st.close();
 }

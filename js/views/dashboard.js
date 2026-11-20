@@ -1,6 +1,7 @@
 import db, { logActivity } from '../db.js';
 import { store, on, nameOf, profileOf, productOf, sectionFolder } from '../store.js';
-import { h, fmtTime, avatar, toastErr, fill } from '../ui.js';
+import { h, fmtTime, avatar, toastErr, fill, celebrate } from '../ui.js';
+import { cellHref, openCell } from './comments.js';
 import { PROGRESS_NAME, STATUS, STEPS, PROGRESS_COLUMNS, SECTIONS } from './templates.js';
 import { productThumb } from './picker.js';
 import { watchSheets, readFigures } from './viewer.js';
@@ -16,6 +17,23 @@ export async function ensureProgress(folder) {
   }
   return prog;
 }
+// Khoảnh khắc hoàn thành: gọi khi chính mình chuyển một bước sang “Xong”
+export function stepDone(name, rowsAfter) {
+  const all = rowsAfter.length && rowsAfter.every(r => r.cells?.trangthai === 'Xong');
+  if (all) celebrate(`🎓 Hoàn thành cả ${rowsAfter.length} bước của đồ án! Chúc cả nhóm bảo vệ thật tốt.`, true);
+  else celebrate(`🎉 Xong bước “${name}” – còn ${rowsAfter.filter(r => r.cells?.trangthai !== 'Xong').length} bước nữa`);
+}
+// hạn chót → chữ + mức độ (quá hạn / sắp tới / còn xa)
+export function dueInfo(han, done) {
+  if (!han) return null;
+  const d = Math.round((new Date(han + 'T23:59:59') - Date.now()) / 864e5);
+  if (done) return { text: `hạn ${han.split('-').reverse().join('/')}`, cls: '' };
+  if (d < 0) return { text: `quá hạn ${-d} ngày`, cls: 'late' };
+  if (d === 0) return { text: 'hạn hôm nay', cls: 'soon' };
+  if (d <= 3) return { text: `còn ${d} ngày`, cls: 'soon' };
+  return { text: `còn ${d} ngày (${han.split('-').reverse().join('/')})`, cls: '' };
+}
+
 // mục mà một bước liên kết tới: theo lựa chọn "Thuộc mục" (nếu đã đặt), không thì theo số bước như trước
 export const stepSection = (c) => 'muc' in (c || {}) ? SECTIONS.find(s => s.key === c.muc) || null : SECTIONS.find(s => s.n === Number(c?.buoc)) || null;
 
@@ -27,9 +45,10 @@ export function mountOverview(el, { product, folder }) {
   const heroBox = h('div');
   const figBox = h('div', { class: 'kpis' });
   const progBox = h('div', { class: 'card card-pad' });
+  const myBox = h('div', { class: 'card card-pad my-tasks' });
   const teamBox = h('div', { class: 'card card-pad' });
   const feedBox = h('div', { class: 'card card-pad' });
-  page.append(heroBox, figBox,
+  page.append(heroBox, figBox, myBox,
     h('div', { class: 'dash-grid' }, progBox, h('div', { style: { display: 'grid', gap: '16px', alignContent: 'start' } }, teamBox, feedBox)));
 
   function renderHero() {
@@ -50,18 +69,27 @@ export function mountOverview(el, { product, folder }) {
     renderProgress();
   }
   function renderProgress() {
+    renderMine();
     const done = rows.filter(r => r.cells.trangthai === 'Xong').length;
     const pct = rows.length ? Math.round(done / rows.length * 100) : 0;
     const people = [...store.profiles.values()];
     fill(progBox,
       h('div', { class: 'row', style: { marginBottom: '10px' } }, h('h3', { class: 'serif', style: { margin: 0 } }, 'Tiến độ đồ án'), h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm', href: `#/db/${product.id}/progress`, title: 'Thêm / bớt / sửa các bước trong Cơ sở dữ liệu', style: { marginRight: '8px' } }, '✏️ Sửa các bước'), h('span', { class: 'badge' }, `${done}/${rows.length} bước · ${pct}%`)),
-      h('div', { class: 'bar big', style: { marginBottom: '12px' } }, h('i', { style: { width: pct + '%' } })),
+      h('div', { class: 'bar big', style: { marginBottom: '12px' }, role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': 'Tiến độ đồ án' }, h('i', { style: { width: pct + '%' } })),
+      rows.length && done === rows.length ? h('div', { class: 'done-banner' }, '🎓 Đã hoàn thành tất cả các bước – sẵn sàng nộp đồ án!') : null,
       h('div', { class: 'steps' }, rows.map((r, ri) => {
         const c = r.cells || {};
         const sec = stepSection(c);
         const cls = c.trangthai === 'Xong' ? 'done' : (c.trangthai === 'Đang làm' || c.trangthai === 'Chờ duyệt') ? 'doing' : '';
-        const set = (k, v) => db.update('data_rows', r.id, { cells: { ...r.cells, [k]: v }, updated_by: store.user.id, updated_at: new Date().toISOString() })
-          .then(() => k === 'trangthai' && logActivity(store.user, `đổi trạng thái → ${v}`, `${product.name} · ${c.noidung}`)).catch(toastErr);
+        const set = (k, v) => {
+          const was = c.trangthai;
+          return db.update('data_rows', r.id, { cells: { ...r.cells, [k]: v }, updated_by: store.user.id, updated_at: new Date().toISOString() })
+            .then(() => {
+              if (k !== 'trangthai') return;
+              logActivity(store.user, `đổi trạng thái → ${v}`, `${product.name} · ${c.noidung}`);
+              if (v === 'Xong' && was !== 'Xong') stepDone(c.noidung, rows.map(x => x.id === r.id ? { ...x, cells: { ...x.cells, trangthai: 'Xong' } } : x));
+            }).catch(toastErr);
+        };
         return h('div', { class: `step ${cls}` },
           h('div', { class: 'n' }, c.trangthai === 'Xong' ? '✓' : ri + 1),
           h('div', {}, sec ? h('a', { class: 'step-t', href: `#/p/${product.id}/${sec.key}` }, c.noidung) : h('div', { class: 'step-t' }, c.noidung), h('div', { class: 'small muted' }, c.ghichu || '')),
@@ -69,6 +97,42 @@ export function mountOverview(el, { product, folder }) {
             h('option', { value: '' }, '— Phụ trách —'), people.map(pp => h('option', { value: pp.id, selected: c.phutrach === pp.id }, pp.display_name || pp.email))),
           h('select', { class: 'select sel-sm', onchange: (e) => set('trangthai', e.target.value) }, STATUS.map(s => h('option', { selected: c.trangthai === s }, s))));
       })));
+  }
+
+  // ---------- Việc của tôi: bước mình phụ trách + bình luận nhắc tên mình ----------
+  let myCmts = [], cmtTables = new Map();
+  async function loadMyComments() {
+    try {
+      const all = await db.select('cell_comments');
+      myCmts = all.filter(c => !c.resolved && (c.mentions || []).includes(store.user.id));
+      const ids = [...new Set(myCmts.map(c => c.table_id))].filter(id => !cmtTables.has(id));
+      for (const id of ids) { const t = await db.get('data_tables', id).catch(() => null); if (t) cmtTables.set(id, t); }
+    } catch { myCmts = []; }
+    renderMine();
+  }
+  function renderMine() {
+    const mine = rows.filter(r => r.cells?.phutrach === store.user.id);
+    const open = mine.filter(r => r.cells?.trangthai !== 'Xong');
+    const late = open.filter(r => dueInfo(r.cells?.han)?.cls === 'late').length;
+    const sum = [open.length ? `${open.length} bước đang chờ bạn` : mine.length ? 'Bạn đã xong mọi bước được giao 👏' : null, late ? `${late} bước quá hạn` : null, myCmts.length ? `${myCmts.length} bình luận nhắc bạn` : null].filter(Boolean).join(' · ');
+    fill(myBox,
+      h('div', { class: 'row', style: { marginBottom: '8px' } }, h('h3', { class: 'serif', style: { margin: 0 } }, '👤 Việc của tôi'), h('span', { class: 'small muted', style: { marginLeft: '10px' } }, sum)),
+      !mine.length && !myCmts.length ? h('p', { class: 'small muted', style: { margin: 0 } }, 'Bạn chưa được giao bước nào. Chọn tên mình ở cột “Phụ trách” trong ô Tiến độ đồ án bên dưới, hoặc được bạn khác @nhắc tên trong bình luận ô.') : null,
+      h('div', { class: 'my-list' },
+        [...open, ...mine.filter(r => r.cells?.trangthai === 'Xong')].map(r => {
+          const c = r.cells, sec = stepSection(c), due = dueInfo(c.han, c.trangthai === 'Xong');
+          return h('a', { class: `my-item ${c.trangthai === 'Xong' ? 'done' : ''}`, href: sec ? `#/p/${product.id}/${sec.key}` : `#/db/${product.id}/progress` },
+            h('span', { class: 'mi-ic' }, c.trangthai === 'Xong' ? '✓' : '◻'),
+            h('span', { class: 'grow' }, h('b', {}, c.noidung), h('small', {}, c.trangthai || 'Chưa làm')),
+            due ? h('span', { class: `due ${due.cls}` }, due.text) : h('span', { class: 'due muted' }, 'chưa đặt hạn'));
+        }),
+        myCmts.map(cm => {
+          const t = cmtTables.get(cm.table_id);
+          return h('a', { class: 'my-item', href: t ? cellHref(t) : '#', onclick: (e) => { if (!t) return; e.preventDefault(); openCell({ tableId: t.id, rowId: cm.row_id, key: cm.col_key, comment: true }, cellHref(t)); } },
+            h('span', { class: 'mi-ic' }, '💬'),
+            h('span', { class: 'grow' }, h('b', {}, `${nameOf(cm.author)}: ${cm.body.length > 70 ? cm.body.slice(0, 70) + '…' : cm.body}`), h('small', {}, `${t?.name || 'Bảng'} · ${fmtTime(cm.created_at)}`)),
+            h('span', { class: 'due' }, 'Mở ô →'));
+        })));
   }
 
   function renderTeam() {
@@ -108,7 +172,8 @@ export function mountOverview(el, { product, folder }) {
   renderFigs();
 
   renderHero(); renderTeam();
-  loadProgress().catch(toastErr); loadFeed().catch(toastErr);
+  loadProgress().catch(toastErr); loadFeed().catch(toastErr); loadMyComments();
+  offs.push(db.subscribe('cell_comments', null, () => loadMyComments()));
   offs.push(on('online', renderTeam), on('profiles', () => { renderTeam(); renderFeed(); renderProgress(); }), on('products', renderHero));
   offs.push(db.subscribe('activity', null, (e) => { if (e.type === 'INSERT' && (!e.new.product_id || e.new.product_id === product.id)) { feed.unshift(e.new); feed = feed.slice(0, 30); renderFeed(); } }));
   offs.push(db.subscribe('data_rows', null, (e) => {

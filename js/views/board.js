@@ -1,6 +1,7 @@
 import db, { logActivity } from '../db.js';
 import { store } from '../store.js';
 import { h, toast, toastErr, prompt, confirmBox, modal, throttle, popMenu, esc, fill, downloadNote } from '../ui.js';
+import { softDelete } from '../trash.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const S = (tag, attrs = {}) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, v); return e; };
@@ -119,7 +120,7 @@ export function mountBoards(el, { folder, sub, go }) {
       { icon: '🖼️', label: 'Tải ảnh SVG', run: exportSvg },
       { icon: '🎯', label: 'Về giữa / vừa khung', run: fit },
       '-',
-      { icon: '🗑️', label: 'Xoá bảng', danger: true, run: async () => { if (await confirmBox('Xoá bảng trắng?', `Xoá “${b.name}” và mọi nội dung trên bảng?`)) { await db.remove('boards', b.id).catch(toastErr); boards = boards.filter(x => x.id !== b.id); openBoard(boards[0]?.id); } } },
+      { icon: '🗑️', label: 'Xoá bảng', danger: true, run: async () => { if (await confirmBox('Xoá bảng trắng?', `Xoá “${b.name}” và mọi nội dung trên bảng? (Có thể khôi phục trong 🗑 Thùng rác 30 ngày.)`, true, `Xoá bảng trắng “${b.name}”`)) { boards = boards.filter(x => x.id !== b.id); openBoard(boards[0]?.id); await softDelete('boards', b.id, { label: b.name, what: 'bảng trắng' }).catch(toastErr); } } },
     ]);
   }
 

@@ -1,6 +1,7 @@
 import db, { logActivity } from '../db.js';
 import { store, nameOf } from '../store.js';
 import { h, fmtTime, toastErr, confirmBox, debounce, throttle, miniMarkdown, popMenu, fill, downloadNote } from '../ui.js';
+import { softDelete } from '../trash.js';
 
 const TEMPLATES = {
   'Ghi chú trống': '',
@@ -139,8 +140,12 @@ export function mountNotes(el, { folder, sub, go }) {
     } catch (e) { toastErr(e); }
   }
   async function remove() {
-    if (!cur || !await confirmBox('Xoá ghi chú?', `Xoá “${cur.title}”? Không thể hoàn tác.`)) return;
-    try { await db.remove('notes', cur.id); logActivity(store.user, 'xoá ghi chú', cur.title); notes = notes.filter(n => n.id !== cur.id); cur = null; go(null); renderList(); renderEditor(); } catch (e) { toastErr(e); }
+    if (!cur) return;
+    const gone = cur;
+    try {
+      notes = notes.filter(n => n.id !== gone.id); cur = null; go(null); renderList(); renderEditor();
+      await softDelete('notes', gone.id, { label: gone.title, what: 'ghi chú', onUndo: () => { if (!notes.some(n => n.id === gone.id)) notes.unshift(gone); select(gone.id); } });
+    } catch (e) { toastErr(e); }
   }
 
   (async () => {

@@ -11,6 +11,9 @@ import { computeSheet, internalToA1, a1ToInternal, shiftRefs, isFormula, parseNu
 import { watchSheets, bookOf } from './book.js';
 import { exportExcel, pickExcel } from './excel.js';
 import { BLANK_SHEET, sheetRows } from './templates.js';
+import { softDelete } from '../trash.js';
+import { cellIssue, markIssue } from './cellcheck.js';
+import { openThread, NEED_SQL } from './comments.js';
 
 const TYPES = { text: 'Văn bản', number: 'Số', formula: 'Công thức (cả cột)', select: 'Lựa chọn', person: 'Thành viên', date: 'Ngày', check: 'Hộp kiểm' };
 const keyOf = (label, cols) => { let k = label.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) || 'cot'; let i = 2; const base = k; while (cols.some(c => c.key === k)) k = base + i++; return k; };
@@ -99,6 +102,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   let cur = table || null, rows = [], comp = null, sel = null; // sel = { ri, key }
   let rng = null, dragFrom = null;   // vùng chọn nhiều ô { r0, r1, c0, c1 } (kéo chuột hoặc Shift + nhấp)
   const offs = [];
+  const phone = matchMedia('(max-width: 640px)').matches;   // điện thoại: bảng tính chỉ xem
+  let cmts = [], cmtOk = true;   // bình luận trên ô của bảng này
   const tools = h('div', { class: 'toolbar sheet-tools' });
   const gridBox = h('div');
   el.append(h('div', { class: 'sheet' }, tools, gridBox));
@@ -115,7 +120,10 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   // ---------- thanh công cụ ----------
   function renderTools() {
     if (!cur) { fill(tools); return; }
+    if (phone) { fill(tools, h('span', { class: 'small muted' }, '📱 Trên điện thoại bảng tính chỉ xem – mở bằng máy tính để sửa.')); return; }
     fill(tools,
+      h('button', { class: 'btn btn-sm', disabled: !hist.undo.length, title: 'Hoàn tác thao tác trước của bạn (Ctrl + Z)', onclick: undo }, '↶'),
+      h('button', { class: 'btn btn-sm', disabled: !hist.redo.length, title: 'Làm lại (Ctrl + Y hoặc Ctrl + Shift + Z)', onclick: redo }, '↷'),
       h('span', { class: 'small muted' }, rng ? `Đang chọn ${rng.r1 - rng.r0 + 1} dòng × ${rng.c1 - rng.c0 + 1} cột` : 'Kéo chuột qua nhiều ô (hoặc Shift + nhấp) để chọn vùng'),
       h('button', { class: 'btn btn-sm', disabled: !rng || (rng.r0 === rng.r1 && rng.c0 === rng.c1), title: 'Gộp các ô đang chọn thành một ô (như Merge trong Excel / Word)', onclick: mergeRange }, '⊞ Gộp ô'),
       h('button', { class: 'btn btn-sm', disabled: !mergesHit().length, title: 'Tách ô đã gộp về như cũ', onclick: unmerge }, '⊟ Tách ô'),
@@ -128,7 +136,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
         { icon: '⬇', label: 'Tải bảng này dạng CSV', run: exportCsv },
         { icon: '⬆', label: 'Nhập thêm dòng từ CSV', run: importCsv },
         '-',
-        { icon: '🗑️', label: 'Xoá bảng', danger: true, run: async () => { if (await confirmBox('Xoá bảng?', `Xoá “${cur.name}” và toàn bộ dữ liệu?`)) { try { await db.remove('data_tables', cur.id); logActivity(store.user, 'xoá bảng', cur.name); onDeleted?.(); } catch (e) { toastErr(e); } } } },
+        { icon: '🗑️', label: 'Xoá bảng', danger: true, run: async () => { if (await confirmBox('Xoá bảng?', `Xoá “${cur.name}” và toàn bộ ${rows.length} dòng dữ liệu? (Có thể khôi phục trong 🗑 Thùng rác 30 ngày.)`, true, `Xoá bảng “${cur.name}”`)) { try { const t = cur; onDeleted?.(); await softDelete('data_tables', t.id, { label: t.name, what: 'bảng' }); } catch (e) { toastErr(e); } } } },
       ]) }, '⋯'));
   }
 
@@ -180,11 +188,11 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
         return h('td', { class: showsSum(c) ? 'num' : '', 'data-tot': showsSum(c) ? c.key : null }, h('div', { class: 'cell tot' }, t == null ? '' : fmtValue(t, c)));
       }))) : null);
     fill(gridBox, h('div', { class: `grid-scroll ${compact ? 'compact' : ''}` }, table),
-      h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } },
+      phone ? null : h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } },
         h('button', { class: 'btn btn-sm', onclick: () => addRow(rows.length) }, '＋ Thêm dòng'),
-));
+        h('span', { class: 'small muted' }, 'Chuột phải vào ô để bình luận / giao việc · ô viền đỏ = lỗi số liệu, viền vàng = cần kiểm tra (rê chuột để xem)')));
     if (sel) setSel(sel.ri, sel.key);
-    paintRange();
+    paintRange(); paintComments();
   }
 
   // ---------- chọn vùng & gộp ô ----------
@@ -243,7 +251,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   gridBox.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearRange(); });
   const hasVal = (v) => v !== '' && v != null && v !== false;
   const saveRow = (r, cells) => { r.cells = cells; return db.update('data_rows', r.id, { cells, updated_by: store.user.id, updated_at: new Date().toISOString() }); };
-  async function mergeRange() {
+  async function mergeRange0() {
     if (!rng) return;
     const cs = cols(), { r0, r1, c0, c1 } = rng;
     if (r0 === r1 && c0 === c1) return;
@@ -270,7 +278,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     if (!q) return [];
     return [...M.anchors.values()].filter(a => a.ri <= q.r1 && a.ri + a.rs - 1 >= q.r0 && a.ci <= q.c1 && a.ci + a.cs - 1 >= q.c0);
   }
-  async function unmerge() {
+  async function unmerge0() {
     const hit = mergesHit(); if (!hit.length) return;
     const jobs = [];
     for (const a of hit) { const r = rows[a.ri]; const m = { ...(r.cells?._m || {}) }; delete m[a.key]; const cells = { ...r.cells, _m: m }; if (!Object.keys(m).length) delete cells._m; jobs.push(saveRow(r, cells)); }
@@ -300,6 +308,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     const td = h('td', { class: `${isNum ? 'num' : ''} ${c.formula || isFormula(v) ? 'calc' : ''} ${computed instanceof FErr ? 'err' : ''}`, 'data-key': c.key });
     const who = editing.get(`${r.id}:${c.key}`);
     if (who) { td.classList.add('busy'); td.title = `${who} đang sửa`; }
+    markIssue(td, cellIssue(c, v, computed));
+    if (phone) { td.append(h('div', { class: 'cell' }, cellText(c, computed))); return td; }
     const set = (val) => saveCell(r, c, val);
     const focusSel = () => setSel(ri, c.key);
     if (c.formula) { td.classList.add('lock'); td.append(h('div', { class: 'cell', title: toDisplay(c.formula) }, fmtValue(computed, c))); return td; }
@@ -352,6 +362,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
         const v = comp.get(ri, c.key); const cell = td.querySelector('.cell'); if (!cell) return;
         const t = fmtValue(v, c); if (cell.textContent !== t) cell.textContent = t;
         td.classList.toggle('err', v instanceof FErr);
+        markIssue(td, cellIssue(c, rows[ri]?.cells?.[c.key] ?? '', v));
         const f = !!c.formula || isFormula(rows[ri]?.cells?.[c.key]);
         td.classList.toggle('calc', f); td.classList.toggle('lock', f);
       });
@@ -360,7 +371,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   }
 
   // ---------- dữ liệu ----------
-  async function saveCell(r, c, val) {
+  async function saveCell0(r, c, val) {
     const cells = { ...(r.cells || {}), [c.key]: val };
     r.cells = cells;
     try { await db.update('data_rows', r.id, { cells, updated_by: store.user.id, updated_at: new Date().toISOString() }); }
@@ -382,7 +393,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     if (JSON.stringify(nc) !== JSON.stringify(cols())) jobs.push(saveColumns(nc, false));
     await Promise.all(jobs).catch(toastErr);
   }
-  async function addRow(index, cells = {}) {
+  async function addRow0(index, cells = {}) {
     try {
       const before = rows[index - 1], after = rows[index];
       const pos = !rows.length ? 0 : !after ? (before.position ?? 0) + 1 : !before ? (after.position ?? 0) - 1 : ((before.position ?? 0) + (after.position ?? 0)) / 2;
@@ -394,14 +405,14 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
       const k = cols().find(c => !c.formula && !['select', 'person', 'date', 'check'].includes(c.type))?.key; if (k) focusCell(rows.findIndex(x => x.id === r.id), k);
     } catch (e) { toastErr(e); }
   }
-  async function delRow(ri) {
+  // xoá dòng: không hỏi lại – có nút “Hoàn tác” trong thông báo, dòng nằm trong 🗑 Thùng rác 30 ngày
+  async function delRow0(ri) {
     const r = rows[ri]; if (!r) return;
-    if (Object.values(r.cells || {}).some(v => v !== '' && v != null && v !== false) && !await confirmBox('Xoá dòng?', `Dòng ${ri + 1} có dữ liệu. Xoá luôn? Công thức đang trỏ tới dòng này sẽ báo #REF!.`)) return;
     await adjustMerges('row', ri, -1);
     rows = rows.filter(x => x.id !== r.id);
     await shiftAll(ri + 1, -1, r.id);
     renderGrid(); renderTools();
-    db.remove('data_rows', r.id).catch(toastErr);
+    try { const d = await softDelete('data_rows', r.id, { label: `dòng ${ri + 1} – ${cur.name}`, what: 'dòng', silent: true }); if (d?.trashId) trashOf.set(r.id, d.trashId); } catch (e) { toastErr(e); }
   }
   function rowMenu(ri, anchor) {
     popMenu(anchor, [
@@ -412,7 +423,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     ]);
   }
   async function saveColumns(columns, rerender = true) { cur.columns = columns; if (rerender) renderGrid(); try { await db.update('data_tables', cur.id, { columns }); } catch (e) { toastErr(e); } }
-  async function addColumn(at) {
+  async function addColumn0(at) {
     const r = await colDialog({ label: '', type: 'text', options: [] }, at);
     if (!r) return;
     const cs = [...cols()]; cs.splice(at, 0, { key: keyOf(r.label, cs), ...r });
@@ -444,20 +455,20 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   }
   function colMenu(i, anchor) {
     const cs = [...cols()];
-    popMenu(anchor, [
-      { icon: '✏️', label: 'Sửa cột (tên, kiểu, công thức)', run: async () => { const r = await colDialog(cs[i]); if (r) { cs[i] = { ...cs[i], ...r }; if (!r.formula) delete cs[i].formula; saveColumns(cs); } } },
+    popMenu(anchor, trackItems([
+      { icon: '✏️', label: 'Sửa cột (tên, kiểu, công thức)', run: async () => { const r = await colDialog(cs[i]); if (r) { cs[i] = { ...cs[i], ...r }; if (!r.formula) delete cs[i].formula; await saveColumns(cs); } } },
       { icon: '⇤', label: 'Chèn cột bên trái', run: () => addColumn(i) },
       { icon: '⇥', label: 'Chèn cột bên phải', run: () => addColumn(i + 1) },
-      { icon: '⬅️', label: 'Chuyển sang trái', run: () => { if (i > 0) { [cs[i - 1], cs[i]] = [cs[i], cs[i - 1]]; saveColumns(cs); } } },
-      { icon: '➡️', label: 'Chuyển sang phải', run: () => { if (i < cs.length - 1) { [cs[i + 1], cs[i]] = [cs[i], cs[i + 1]]; saveColumns(cs); } } },
-      { icon: '↔️', label: 'Rộng hơn', run: () => { cs[i] = { ...cs[i], width: (cs[i].width || 130) + 60 }; saveColumns(cs); } },
-      { icon: '↕️', label: 'Hẹp hơn', run: () => { cs[i] = { ...cs[i], width: Math.max(70, (cs[i].width || 130) - 40) }; saveColumns(cs); } },
+      { icon: '⬅️', label: 'Chuyển sang trái', run: () => { if (i > 0) { [cs[i - 1], cs[i]] = [cs[i], cs[i - 1]]; return saveColumns(cs); } } },
+      { icon: '➡️', label: 'Chuyển sang phải', run: () => { if (i < cs.length - 1) { [cs[i + 1], cs[i]] = [cs[i], cs[i + 1]]; return saveColumns(cs); } } },
+      { icon: '↔️', label: 'Rộng hơn', run: () => { cs[i] = { ...cs[i], width: (cs[i].width || 130) + 60 }; return saveColumns(cs); } },
+      { icon: '↕️', label: 'Hẹp hơn', run: () => { cs[i] = { ...cs[i], width: Math.max(70, (cs[i].width || 130) - 40) }; return saveColumns(cs); } },
       { icon: '🔤', label: 'Sắp xếp theo cột này', run: () => sortBy(cs[i]) },
       '-',
-      { icon: '🗑️', label: 'Xoá cột', danger: true, run: async () => { if (await confirmBox('Xoá cột?', `Xoá cột “${cs[i].label}”? Công thức đang dùng cột này sẽ báo #REF!.`)) { await adjustMerges('col', i, -1); cs.splice(i, 1); saveColumns(cs); } } },
-    ]);
+      { icon: '🗑️', label: 'Xoá cột', danger: true, run: async () => { if (await confirmBox('Xoá cột?', `Xoá cột “${cs[i].label}”? Công thức đang dùng cột này sẽ báo #REF!. (Bấm Ctrl + Z để hoàn tác.)`, true, `Xoá cột “${cs[i].label}”`)) { await adjustMerges('col', i, -1); cs.splice(i, 1); await saveColumns(cs); } } },
+    ]));
   }
-  async function sortBy(c) {
+  async function sortBy0(c) {
     if (mergeMap(cols(), rows).anchors.size) { toast('Bảng có ô gộp – hãy “⊟ Tách ô” trước khi sắp xếp.', 'error'); return; }
     if (rows.some(r => Object.values(r.cells || {}).some(v => isFormula(v) && /\{[a-z0-9_]+\}\d/.test(v))) && !await confirmBox('Sắp xếp bảng có công thức?', 'Bảng có công thức trỏ tới số dòng cố định – sắp xếp có thể làm sai kết quả. Vẫn sắp xếp?', false)) return;
     const val = (r, i) => { const v = comp.get(rows.indexOf(r), c.key); const n = parseNum(v); return n ?? String(v ?? ''); };
@@ -465,7 +476,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     rows = order; renderGrid();
     try { await Promise.all(rows.map((r, i) => r.position !== i ? db.update('data_rows', r.id, { position: i }).then(() => { r.position = i; }) : null)); } catch (e) { toastErr(e); }
   }
-  async function pasteGrid(ri, c, text) {
+  async function pasteGrid0(ri, c, text) {
     const lines = text.replace(/\r/g, '').split('\n'); if (lines[lines.length - 1] === '') lines.pop();
     const cs = cols(); const ci = cs.findIndex(x => x.key === c.key);
     for (const line of lines) {
@@ -486,7 +497,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     const a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })), download: cur.name + '.csv' }); a.click(); downloadNote();
   }
   function importCsv() {
-    const inp = h('input', { type: 'file', accept: '.csv,text/csv', onchange: async (e) => {
+    const inp = h('input', { type: 'file', accept: '.csv,text/csv', onchange: (e) => track(async () => {
       const f = e.target.files[0]; if (!f) return;
       const parsed = parseCsv((await f.text()).replace(/^﻿/, '')); if (parsed.length < 2) { toast('Tệp CSV trống', 'error'); return; }
       const [head, ...body] = parsed;
@@ -496,7 +507,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
       let pos = rows.length ? (rows[rows.length - 1].position ?? 0) + 1 : 0;
       const newRows = body.filter(r => r.some(v => v.trim())).map(r => ({ table_id: cur.id, position: pos++, updated_by: store.user.id, cells: Object.fromEntries(map.map((c, j) => c.formula ? null : [c.key, parseInput(c, r[j] ?? '')]).filter(Boolean)) }));
       try { const ins = await db.insertMany('data_rows', newRows); ins.forEach(r => { if (!rows.some(x => x.id === r.id)) rows.push(r); }); renderGrid(); renderTools(); toast(`Đã nhập ${ins.length} dòng`, 'ok'); logActivity(store.user, `nhập ${ins.length} dòng vào`, cur.name); } catch (er) { toastErr(er); }
-    } });
+    }) });
     inp.click();
   }
   function helpFormula() {
@@ -509,12 +520,138 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
       h('p', {}, 'Ô trắng là ô nhập. Ô xám là ô tự tính – bấm đúp để sửa công thức của ô đó. Bấm số dòng để chèn / xoá dòng, công thức tự dịch như Excel.')), [{ label: 'Đã hiểu', value: 1, primary: true }]);
   }
 
+  // ---------- hoàn tác / làm lại (chỉ thao tác của chính mình) ----------
+  // Mỗi thao tác: chụp trạng thái bảng trước & sau → lưu phần khác nhau (dòng, cột) để đảo ngược
+  const hist = { undo: [], redo: [] }, trashOf = new Map();
+  let tracking = 0, applying = false;
+  const snapState = () => ({ cols: JSON.stringify(cols()), rows: new Map(rows.map(r => [r.id, JSON.stringify({ cells: r.cells || {}, position: r.position ?? 0 })])) });
+  async function track(fn) {
+    if (applying || tracking || !cur) return fn();
+    tracking++;
+    const before = snapState();
+    try { return await fn(); } finally { tracking--; record(before); }
+  }
+  function record(before) {
+    const after = snapState(), d = [];
+    for (const id of new Set([...before.rows.keys(), ...after.rows.keys()])) {
+      const b = before.rows.get(id) ?? null, a = after.rows.get(id) ?? null;
+      if (b !== a) d.push({ id, b: b && JSON.parse(b), a: a && JSON.parse(a) });
+    }
+    const colsD = before.cols !== after.cols ? { b: JSON.parse(before.cols), a: JSON.parse(after.cols) } : null;
+    if (!d.length && !colsD) return null;
+    const entry = { rows: d, cols: colsD };
+    hist.undo.push(entry); if (hist.undo.length > 100) hist.undo.shift();
+    hist.redo = []; renderTools();
+    return entry;
+  }
+  async function applyHist(entry, back) {
+    applying = true;
+    const jobs = [], at = new Date().toISOString();
+    try {
+      if (entry.cols) { const c = back ? entry.cols.b : entry.cols.a; cur.columns = c; jobs.push(db.update('data_tables', cur.id, { columns: c })); }
+      for (const d of entry.rows) {
+        const want = back ? d.b : d.a, i = rows.findIndex(r => r.id === d.id);
+        if (!want) { if (i >= 0) { rows.splice(i, 1); jobs.push(db.remove('data_rows', d.id)); } continue; }
+        if (i >= 0) { rows[i] = { ...rows[i], ...want }; jobs.push(db.update('data_rows', d.id, { ...want, updated_by: store.user.id, updated_at: at })); }
+        else {
+          const r = { id: d.id, table_id: cur.id, ...want, updated_by: store.user.id }; rows.push(r);
+          jobs.push(db.insert('data_rows', r).then(() => { const t = trashOf.get(d.id); if (t) { trashOf.delete(d.id); return db.remove('trash', t).catch(() => {}); } }));
+        }
+      }
+      rows = sorted(rows); renderGrid(); renderTools();
+      await Promise.all(jobs);
+    } catch (e) { toastErr(e); } finally { applying = false; }
+  }
+  function undo() { const e = hist.undo.pop(); if (!e) return toast('Không còn thao tác nào để hoàn tác'); hist.redo.push(e); applyHist(e, true); toast('↶ Đã hoàn tác'); }
+  function redo() { const e = hist.redo.pop(); if (!e) return; hist.undo.push(e); applyHist(e, false); toast('↷ Đã làm lại'); }
+  function undoEntry(e) { const i = hist.undo.indexOf(e); if (i < 0) return; hist.undo.splice(i, 1); hist.redo.push(e); return applyHist(e, true); }
+  const trackItems = (items) => items.map(it => it && it !== '-' && it.run ? { ...it, run: () => track(it.run) } : it);
+  const saveCell = (...a) => track(() => saveCell0(...a));
+  const addRow = (...a) => track(() => addRow0(...a));
+  const sortBy = (...a) => track(() => sortBy0(...a));
+  const pasteGrid = (...a) => track(() => pasteGrid0(...a));
+  const mergeRange = () => track(mergeRange0);
+  const unmerge = () => track(unmerge0);
+  const addColumn = (...a) => track(() => addColumn0(...a));
+  async function delRow(ri) {
+    const n = ri + 1;
+    await track(() => delRow0(ri));
+    const e = hist.undo.at(-1);
+    toast(`Đã xoá dòng ${n}`, 'info', { action: { label: 'Hoàn tác', run: () => undoEntry(e) } });
+  }
+  const onUndoKey = (e) => {
+    if (!el.isConnected || !(e.ctrlKey || e.metaKey) || e.altKey || phone) return;
+    const k = e.key.toLowerCase(); if (k !== 'z' && k !== 'y') return;
+    if (document.querySelector('.modal-wrap, .cmt-pop')) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && !gridBox.contains(a) && a.closest('input, textarea, select, [contenteditable]')) return;
+    if (a?.isContentEditable && gridBox.contains(a)) {
+      const td = a.closest('td'), ri = +td.parentElement.getAttribute('data-i');
+      if (a.textContent !== rawOf(ri, td.getAttribute('data-key'))) return;   // đang gõ dở trong ô: để trình duyệt hoàn tác chữ
+      a.blur();
+    }
+    e.preventDefault();
+    if (k === 'y' || e.shiftKey) redo(); else undo();
+  };
+  document.addEventListener('keydown', onUndoKey);
+
+  // ---------- bình luận trên ô ----------
+  const addrOf = (ri, key) => colLetter(cols().findIndex(c => c.key === key)) + (ri + 1);
+  function paintComments() {
+    gridBox.querySelectorAll('.cmt-dot').forEach(x => x.remove());
+    if (!cmts.length) return;
+    const open = new Map();
+    cmts.forEach(c => { if (!c.resolved) open.set(`${c.row_id}:${c.col_key}`, (open.get(`${c.row_id}:${c.col_key}`) || 0) + 1); });
+    for (const [k, n] of open) {
+      const [rid, key] = k.split(':');
+      const td = gridBox.querySelector(`tr[data-row="${rid}"] td[data-key="${key}"]`); if (!td) continue;
+      td.append(h('button', { class: 'cmt-dot', title: `${n} bình luận chưa giải quyết – bấm để xem`, onmousedown: (e) => e.stopPropagation(), onclick: (e) => { e.stopPropagation(); thread(rid, key, td); } }, n > 1 ? n : ''));
+    }
+  }
+  function thread(rid, key, td) {
+    if (!cmtOk) { toast(NEED_SQL, 'error'); return; }
+    const ri = rows.findIndex(r => r.id === rid), col = cols().find(c => c.key === key);
+    if (ri < 0 || !col) return;
+    openThread({ table: cur, row: rows[ri], col, addr: addrOf(ri, key), anchor: td, list: () => cmts, onChange: paintComments });
+  }
+  gridBox.addEventListener('contextmenu', (e) => {
+    const td = e.target.closest?.('tbody td[data-key]'); if (!td || phone) return;
+    e.preventDefault();
+    const rid = td.parentElement.getAttribute('data-row'), key = td.getAttribute('data-key');
+    const n = cmts.filter(c => c.row_id === rid && c.col_key === key).length;
+    popMenu(td, [{ icon: '💬', label: n ? `Xem bình luận (${n})` : 'Bình luận / giao việc (@tên)', run: () => thread(rid, key, td) },
+      { icon: '↶', label: 'Hoàn tác (Ctrl + Z)', run: undo }]);
+  });
+  async function loadComments() {
+    try { cmts = await db.select('cell_comments', { eq: { table_id: cur.id } }); paintComments(); }
+    catch { cmtOk = false; return; }
+    offs.push(db.subscribe('cell_comments', ['table_id', cur.id], (e) => {
+      if (e.type === 'DELETE') cmts = cmts.filter(c => c.id !== e.old.id);
+      else { const i = cmts.findIndex(c => c.id === e.new.id); if (i >= 0) cmts[i] = e.new; else cmts.push(e.new); }
+      paintComments();
+    }));
+  }
+  // mở từ liên kết (Tin nhắn, Ctrl + K, Kiểm tra số liệu): nhảy tới đúng ô
+  function focusFromLink() {
+    const f = store.focus; if (!f || f.tableId !== cur?.id) return;
+    store.focus = null;
+    const ri = rows.findIndex(r => r.id === f.rowId); if (ri < 0) return;
+    setTimeout(() => {
+      const td = gridBox.querySelector(`tr[data-i="${ri}"] td[data-key="${f.key}"]`); if (!td) return;
+      td.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      td.classList.remove('flash'); void td.offsetWidth; td.classList.add('flash');
+      setSel(ri, f.key);
+      if (f.comment) thread(f.rowId, f.key, td);
+    }, 60);
+  }
+
   // ---------- realtime ----------
   async function load() {
     if (!cur && tableId) cur = await db.get('data_tables', tableId);
     if (!cur) { renderGrid(); return; }
     rows = sorted(await db.select('data_rows', { eq: { table_id: cur.id } }));
     renderTools(); renderGrid();
+    loadComments(); focusFromLink();
     offs.push(db.subscribe('data_rows', ['table_id', cur.id], (e) => {
       if (e.type === 'DELETE') { if (!rows.some(r => r.id === e.old.id)) return; rows = rows.filter(r => r.id !== e.old.id); }
       else {
@@ -548,7 +685,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   }
   load().catch(toastErr);
   offs.push(on('profiles', () => cur && !document.activeElement?.isContentEditable && renderGrid()));
-  return () => { offs.forEach(f => f()); room.close(); book?.subs.delete(onBook); document.removeEventListener('mouseup', endDrag); };
+  return () => { offs.forEach(f => f()); room.close(); book?.subs.delete(onBook); document.removeEventListener('mouseup', endDrag); document.removeEventListener('keydown', onUndoKey); document.querySelectorAll('.cmt-pop').forEach(x => x.remove()); };
 }
 
 function parseCsv(t) {

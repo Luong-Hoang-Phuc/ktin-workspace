@@ -1,0 +1,143 @@
+/* Chế độ tối – tự sinh từ style.css bằng tools/gen-dark.py (đừng sửa tay, chạy lại công cụ khi đổi style.css) */
+html.dark .btn:hover { background: #2c2311; }
+html.dark .input, html.dark .select, html.dark .textarea { background: #271f0f; }
+html.dark .demo-note { background: #2f2612; }
+html.dark .bar { background: #453e30; }
+html.dark .tabs-mini { background: #3e3729; }
+html.dark .page-head { background: rgba(47, 40, 28, .55); }
+html.dark .empty { background: rgba(47, 40, 28, .6); }
+html.dark .pthumb.has-img { background: #171717 !important; }
+html.dark .pthumb img { background: #171717; }
+html.dark .dr-prod.on { background: #3c3424; }
+html.dark .step { background: #2a2315; }
+html.dark .f-root { background: var(--chrome); }
+html.dark .f-si { background: var(--chrome); }
+html.dark .f-mc.sel { background: #2e2411; }
+html.dark .f-sum div { background: #2a2315; }
+html.dark .spec-drop.drag { background: #564836; }
+html.dark .place { background: #3e3729; }
+html.dark .dropzone { background: rgba(47, 40, 28, .6); }
+html.dark .dropzone.drag { background: #3c3424; }
+html.dark .ftable th { background: #393224; }
+html.dark .ftable tr:hover td { background: #2a2315; }
+html.dark .lock { color: #e4c3bc; background: #35241b; }
+html.dark .version { background: #2a2315; }
+html.dark .note-list { background: rgba(47, 40, 28, .7); }
+html.dark .note-item:hover { background: #2a2315; }
+html.dark .note-item.on { background: #3c3424; }
+html.dark .note-text { background: #271f0f; }
+html.dark .note-preview pre { background: #393224; }
+html.dark .wb-pick { background: rgba(47, 40, 28, .7); }
+html.dark .wb-tool { background: #271f0f; }
+html.dark .wb-tool.on { background: var(--chrome); }
+html.dark .dt-pill.on { background: var(--chrome); }
+html.dark .grid-scroll { background: #271f0f; }
+html.dark table.grid th { background: #393224; }
+html.dark table.grid td { border-bottom: 1px solid #3e3729; border-right: 1px solid #3e3729; }
+html.dark table.grid td.idx, html.dark table.grid th.idx { background: #2f281c; }
+html.dark table.grid td .cell:focus { background: #2e2411; }
+html.dark table.grid tr:hover td { background: #2a2315; }
+html.dark .toast { background: var(--chrome); }
+html.dark .menu button:hover { background: #3c3424; }
+html.dark .tico { border: 1.5px solid rgba(51, 44, 29, .3); }
+html.dark .tico:hover { background: rgba(51, 44, 29, .12); }
+html.dark .tico.on { background: var(--paper-2); }
+html.dark .nav-db { background: rgba(94, 80, 63, .35); }
+html.dark .nav-db:hover { background: rgba(94, 80, 63, .55); }
+html.dark .sidebar.db-mode { background: #504638; }
+html.dark .db-head { background: var(--chrome); }
+html.dark .page-head.db { background: repeating-linear-gradient(135deg, rgba(94, 80, 63, .28) 0 14px, rgba(94, 80, 63, .14) 14px 28px); }
+html.dark .btn-db:hover { background: #564836; }
+html.dark .fbar { background: #271f0f; }
+html.dark .fb-addr { background: #2f281c; }
+html.dark table.grid.xl th.fx { background: #413928; }
+html.dark table.grid td.idx:hover { background: #3c3424; }
+html.dark table.grid td.calc { background: #2d2618; }
+html.dark table.grid td.calc .cell { color: #c7d5e4; }
+html.dark table.grid td.rsel { background: rgba(55, 76, 121, .10) !important; }
+html.dark table.grid td.mg { background: #241f0e; }
+html.dark table.grid td.busy { box-shadow: inset 0 0 0 2px #836736; }
+html.dark table.grid tfoot td { background: #352e20; }
+html.dark table.grid td.rowhead { background: #2f281c; }
+html.dark .f-root2 { background: var(--chrome); }
+html.dark .f-st.mine .f-si { background: #171717; }
+html.dark .ln { background: #3e3729; }
+html.dark .ln-hop { background: #2d3327; }
+html.dark .ln-sach { background: #24292f; }
+html.dark .ln.fx { background: #35261d; }
+html.dark .ln.use { background: var(--chrome); }
+html.dark .f-mc.mine { background: #2e2411; }
+html.dark .factory.ro .f-panel { background: #2d2618; }
+html.dark .ro-v { background: #271f0f; }
+html.dark .plan .p-root { background: var(--chrome); }
+html.dark .pr-card { background: #271f0f; }
+html.dark .flow-sum .fs { background: var(--chrome); }
+html.dark .fl-st { background: rgba(39, 31, 15, .5); }
+html.dark .fl-st.on { background: #271f0f; }
+html.dark table.sv tr.hl td { background: #2e2411; }
+html.dark .bt { background: #3e3729; }
+html.dark .rt { background: #271f0f; }
+html.dark .gantt-scroll { background: #271f0f; }
+html.dark .g-h { border-left: 1px solid #352e22; background: #2f281c; }
+html.dark .g-h.we { background: #3c3424; }
+html.dark .g-name { border-bottom: 1px solid #352e22; background: #271f0f; }
+html.dark .cp { background: #271f0f; }
+html.dark .dt-body .factory { background: rgba(47, 40, 28, .5); }
+html.dark .dr-item.on { background: #3c3424; }
+html.dark .fac-phh { background: var(--chrome); }
+html.dark .fac-st.on { background: #2e2411; }
+html.dark .fac-tg .ct { background: #3e3729; }
+html.dark .fac-m:hover { background: rgba(94, 80, 63, .2); }
+html.dark .fac-m.on { background: var(--chrome); }
+html.dark table.grid tbody td:not(.idx):not(.rowhead) { background: #171717; }
+html.dark table.grid tbody td.lock, html.dark table.grid tbody td.calc { background: #352f25 !important; }
+html.dark table.grid td.lock .cell, html.dark table.grid td.calc .cell { color: #d8d0c8; }
+html.dark table.grid th.fx { background: #423b2d; }
+html.dark .warn { background: #2d2113; border: 1.5px solid #644e34; color: #e9ceb6; }
+html.dark .dock-ic:hover { background: rgba(94, 80, 63, .35); }
+html.dark .dock-me { background: var(--chrome); }
+html.dark .chat.drop::after { background: rgba(47, 40, 28, .92); }
+html.dark .tray-it { background: #171717; }
+html.dark .msg-img { background: #171717; }
+html.dark .msg-img img { background: #2f291e; }
+html.dark .msg-act:hover { background: var(--chrome); }
+html.dark .msg-quote { background: rgba(94, 80, 63, .25); }
+html.dark .msg-quote:hover { background: rgba(94, 80, 63, .42); }
+html.dark .wb-fmt { background: #271f0f; }
+html.dark .pe-table input.input:focus { background: #171717; }
+html.dark .my-item { background: rgba(39, 31, 15, .55); }
+html.dark .my-item:hover { background: #2c2311; }
+html.dark .due.soon { color: #f1d6af; }
+html.dark table.grid td.v-err { box-shadow: inset 0 0 0 2px #7a3e3e; background: #2b1713; }
+html.dark table.grid td.v-warn { background: #2f2612; }
+html.dark .check-sum.bad { border-color: #7a3e3e; }
+html.dark .check-i { background: rgba(39, 31, 15, .6); }
+html.dark .check-i.err { border-left-color: #7a3e3e; }
+html.dark .cmt-sug-i.on, html.dark .cmt-sug-i:hover { background: #3c3424; }
+html.dark .msg-ref { background: rgba(39, 31, 15, .7); }
+html.dark :focus-visible { outline: 3px solid #374c79; }
+html.dark .btn:focus-visible, html.dark .icon-btn:focus-visible, html.dark .dock-ic:focus-visible, html.dark .nav:focus-visible { outline: 3px solid #374c79; }
+/* ghi đè thủ công (đặt sau để được ưu tiên) */
+html.dark {
+  --bg: #17120d; --paper: #221a13; --paper-2: #2a2018; --side: #1c150f; --kr: #a8805a;
+  --ink: #efe2c8; --ink-2: #dccbad; --muted: #bba487; --line: #5a4632;
+  --rd: #e07a5f; --gr: #93b874; --bl: #8db4dc; --cream: #f3e6cc; --chrome: #0f0b07;
+  --shadow: 0 1px 0 rgba(0, 0, 0, .4), 0 2px 8px rgba(0, 0, 0, .35); --shadow-lg: 0 18px 40px rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+html.dark body { background-image: radial-gradient(rgba(255, 235, 200, .05) 1px, transparent 1.2px); }
+html.dark a { color: #f0a088; }
+html.dark .btn-primary { background: var(--rd); border-color: var(--rd); color: #1a120c; }
+html.dark .badge { background: #3a2d21; color: var(--ink); }
+html.dark .nav.on, html.dark .dock-ic.on, html.dark .chip.on, html.dark .seg button.on, html.dark .kpi.hl, html.dark .meta span { background: #f3e6cc; color: #1a120c; }
+html.dark .kpi.hl span, html.dark .kpi.hl small { color: #5a4632; }
+html.dark .topbar, html.dark .dr-head, html.dark .login-art, html.dark .mobile-nav { background: var(--chrome); }
+html.dark .pal-i.on { background: #f3e6cc; color: #1a120c; } html.dark .pal-i.on small { color: #5a4632; }
+html.dark kbd { background: #2a2018; color: var(--ink); border-color: var(--line); }
+html.dark .msg.mine .bubble { filter: brightness(.92); }
+html.dark .msg:not(.mine) .bubble { background: color-mix(in srgb, var(--uc) 22%, #221a13); border-color: color-mix(in srgb, var(--uc) 55%, transparent); color: var(--ink); }
+html.dark .msg-h b { color: color-mix(in srgb, var(--uc) 60%, #fff); }
+html.dark .msg-quote { color: var(--ink); }
+html.dark input, html.dark select, html.dark textarea { color-scheme: dark; }
+html.dark table.grid td.v-err { background: #4a1d17; } html.dark table.grid td.v-warn { background: #47330c; }
+html.dark .wb-canvas { filter: brightness(.88); }

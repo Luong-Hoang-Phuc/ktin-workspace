@@ -36,6 +36,16 @@ const db = {
     if (order) q = q.order(order[0], { ascending: order[1] !== false });
     return must(await q);
   },
+  // Lấy hết (Supabase mỗi lần trả tối đa 1.000 dòng → lấy theo từng trang)
+  async selectAll(table, { eq = {} } = {}) {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      let q = sb.from(table).select('*').range(from, from + 999);
+      for (const [k, v] of Object.entries(eq)) q = q.eq(k, v);
+      const d = must(await q); out.push(...d);
+      if (d.length < 1000) return out;
+    }
+  },
   async get(table, id) { return must(await sb.from(table).select('*').eq('id', id).maybeSingle()); },
   async insert(table, row) { return must(await sb.from(table).insert(row).select().single()); },
   async insertMany(table, rows) { const out = []; for (let i = 0; i < rows.length; i += 500) out.push(...must(await sb.from(table).insert(rows.slice(i, i + 500)).select())); return out; },

@@ -4,6 +4,7 @@
 import db from '../db.js';
 import { store, on, profileOf, nameOf, colorOf } from '../store.js';
 import { h, fill, toastErr, avatar, esc } from '../ui.js';
+import { openCell } from './comments.js';
 
 const READ = 'ktin-chat-read';
 export const lastRead = () => { try { return localStorage.getItem(READ) || ''; } catch { return ''; } };
@@ -96,7 +97,11 @@ export function mountChat(el, { onRead }) {
     const who = [...typing.values()].filter(x => Date.now() - x.at < 3000).map(x => x.name);
     typingEl.textContent = who.length ? `${who.join(', ')} đang nhập…` : '';
   }
-  const atts = (m) => Array.isArray(m.attachments) ? m.attachments : [];
+  const allAtts = (m) => Array.isArray(m.attachments) ? m.attachments : [];
+  const atts = (m) => allAtts(m).filter(a => a.kind !== 'ref');   // ảnh
+  const refs = (m) => allAtts(m).filter(a => a.kind === 'ref');   // thẻ “mở ô” từ bình luận trên bảng tính
+  const refCard = (a) => h('a', { class: 'msg-ref', href: a.href, title: 'Mở đúng ô này trong Cơ sở dữ liệu', onclick: (e) => { e.preventDefault(); openCell({ ...a.focus, comment: true }, a.href); } },
+    h('span', { class: 'mr-ic' }, '▦'), h('span', {}, h('b', {}, a.label), (a.mentions || []).length ? h('small', {}, 'Nhắc: ' + a.mentions.map(id => id === store.user.id ? 'bạn' : nameOf(id)).join(', ')) : h('small', {}, 'Bấm để mở ô')));
   function thumb(a) {
     const img = h('img', { alt: a.name || 'Ảnh', loading: 'lazy', onload: () => { if (list.scrollHeight - list.scrollTop - list.clientHeight < 400) list.scrollTop = list.scrollHeight; } });
     if (a.w && a.h) img.style.aspectRatio = `${a.w} / ${a.h}`;
@@ -189,6 +194,7 @@ export function mountChat(el, { onRead }) {
             m.reply_to ? quoteOf(m) : null,
             atts(m).length ? h('div', { class: `msg-imgs n${Math.min(atts(m).length, 3)}` }, atts(m).map(a => thumb(a))) : null,
             m.body ? h('div', { class: 'bubble', html: linkify(m.body) }) : null,
+            refs(m).length ? h('div', { class: 'msg-refs' }, refs(m).map(refCard)) : null,
             reactRow(m)),
           h('div', { class: 'msg-acts' },
             h('button', { class: 'msg-act', title: 'Thả cảm xúc', onclick: (e) => pickReact(m, e.currentTarget) }, '☺'),
@@ -246,6 +252,7 @@ export function mountChat(el, { onRead }) {
   });
   (async () => {
     try { msgs = await db.select('messages', { order: ['created_at', true] }); msgs = msgs.slice(-500); render(); box.focus(); } catch (e) { toastErr(e); }
+    if (store.focusMsg) { const id = store.focusMsg; store.focusMsg = null; setTimeout(() => jumpTo(id), 120); }   // mở từ Ctrl + K
     try { reacts = await db.select('message_reactions'); render(); } catch (e) { console.warn('Chưa có bảng cảm xúc', e); }
   })();
   return () => { off(); offP(); offR(); document.querySelectorAll('.react-pick').forEach(x => x.remove()); room.close(); pending.forEach(p => URL.revokeObjectURL(p.url)); };

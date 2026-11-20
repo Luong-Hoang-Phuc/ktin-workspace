@@ -76,6 +76,13 @@ js/views/chat.js        tin nhắn nhóm
 js/views/factory.js     sơ đồ nhà máy chung + bảng thiết bị
 js/views/plan.js        phương án sản xuất dạng cây
 js/views/viewer.js      trang xem từng mục
+js/views/comments.js    bình luận & giao việc trên ô (@tên)
+js/views/cellcheck.js   kiểm tra số liệu (ô lỗi / đáng ngờ) · checkview.js: trang Kiểm tra trước khi nộp
+js/views/palette.js     Ctrl + K tìm mọi thứ · phím ? bảng phím tắt
+js/views/report.js      xuất thuyết minh Word (.docx) / in PDF
+js/views/trashview.js   trang Thùng rác · js/trash.js: xoá có Hoàn tác, giữ 30 ngày
+js/net.js               làm việc khi mất mạng (giữ thay đổi trên máy, tự đồng bộ)
+css/dark.css            chế độ tối – tự sinh từ style.css (tools/gen-dark.py)
 js/views/*.js           tổng quan, tài liệu, ghi chú, thông số
 supabase/setup.sql      tạo bảng, bảo mật, realtime, kho file, dữ liệu ban đầu
 ```

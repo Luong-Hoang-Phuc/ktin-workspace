@@ -7,6 +7,14 @@ import { mountPicker, productThumb } from './views/picker.js';
 import { mountOverview } from './views/dashboard.js';
 import { mountProgressEditor } from './views/progress.js';
 const PROGRESS_SEC = { key: 'progress', label: 'Tiến độ đồ án' };   // mục CSDL sửa các bước tiến độ
+const CHECK_SEC = { key: 'check', label: 'Kiểm tra số liệu' };     // quét lỗi số liệu trước khi nộp
+
+// ---------- chế độ tối (lưu trên trình duyệt) ----------
+const THEME = 'ktin-theme';
+function applyTheme(t) { document.documentElement.classList.toggle('dark', t === 'dark'); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#1d1712' : '#3b2a1a'); }
+function toggleTheme() { const t = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; try { localStorage.setItem(THEME, t); } catch {} applyTheme(t); toast(t === 'dark' ? '🌙 Đã bật chế độ tối' : '☀️ Đã bật chế độ sáng'); }
+try { applyTheme(localStorage.getItem(THEME)); } catch {}
+installGlobalKeys();
 import { mountFiles } from './views/files.js';
 import { mountNotes } from './views/notes.js';
 import { mountBoards } from './views/board.js';
@@ -16,6 +24,13 @@ import { mountFactoryTree, mountMachineTable } from './views/factory.js';
 import { mountSpecs } from './views/specs.js';
 import { mountPlan } from './views/plan.js';
 import { mountSectionView } from './views/viewer.js';
+import { openCell } from './views/comments.js';
+import { mountTrash } from './views/trashview.js';
+import { mountCheck } from './views/checkview.js';
+import { mountReport } from './views/report.js';
+import { openPalette, openShortcuts, installGlobalKeys } from './views/palette.js';
+import { purgeOld } from './trash.js';
+import { initNet } from './net.js';
 
 const app = document.getElementById('app');
 let cleanup = null;
@@ -38,7 +53,8 @@ function upsertList(list, row) { const i = list.findIndex(x => x.id === row.id);
 
 async function start(user, fresh = false) {
   store.user = user;
-  store.actions = { popMenu, openCanva, editCanva, go };
+  store.actions = { popMenu, openCanva, editCanva, go, openProfile, toggleTheme };
+  initNet();
   let profiles = await db.select('profiles');
   if (!profiles.find(p => p.id === user.id)) {
     try { await db.insert('profiles', { id: user.id, email: user.email, display_name: user.email.split('@')[0] }); } catch {}
@@ -76,12 +92,16 @@ async function start(user, fresh = false) {
     if (e.type !== 'INSERT' || e.new.user_id === user.id || store.route.view === 'chat') return;
     store.unread = (store.unread || 0) + 1; renderSide();
     const who = store.profiles.get(e.new.user_id)?.display_name || 'Ai đó';
-    const txt = e.new.body || (e.new.attachments?.length ? `🖼 đã gửi ${e.new.attachments.length > 1 ? e.new.attachments.length + ' ảnh' : 'một ảnh'}` : '');
+    const imgs = (e.new.attachments || []).filter(a => a.kind !== 'ref'), ref = (e.new.attachments || []).find(a => a.kind === 'ref');
+    const txt = e.new.body || (imgs.length ? `🖼 đã gửi ${imgs.length > 1 ? imgs.length + ' ảnh' : 'một ảnh'}` : '');
     const toMe = e.new.reply_to && store.myMsgIds?.has(e.new.reply_to);
+    // bình luận trên ô có @nhắc tên mình → thông báo nổi bật, bấm “Mở ô” để tới đúng chỗ
+    if (ref && (ref.mentions || []).includes(user.id)) { toast(`🔔 ${who} nhắc bạn ở ${ref.label}: ${txt.length > 60 ? txt.slice(0, 60) + '…' : txt}`, 'info', { action: { label: 'Mở ô', run: () => openCell({ ...ref.focus, comment: true }, ref.href) }, ms: 12000 }); return; }
     toast(`${toMe ? '↩' : '💬'} ${who}${toMe ? ' trả lời bạn' : ''}: ${txt.length > 60 ? txt.slice(0, 60) + '…' : txt}`);
   });
 
   renderShell();
+  setTimeout(() => purgeOld(), 5000);   // dọn mục quá 30 ngày trong thùng rác
   store.presence = db.presence({ id: user.id, name: store.me?.display_name || user.email, color: store.me?.color || '#b5462f' },
     (list) => { store.online = list.filter(Boolean); renderTop(); renderSide(); emit('online'); });
   addEventListener('hashchange', route);
@@ -146,14 +166,15 @@ function renderLogin() {
 // =====================================================================
 // KHUNG GIAO DIỆN
 // =====================================================================
-let topEl, sideEl, mainEl, shellEl, drawerEl;
+let topEl, sideEl, mainEl, shellEl, drawerEl, mnavEl;
 function renderShell() {
   topEl = h('header', { class: 'topbar' });
   sideEl = h('nav', { class: 'sidebar' });
-  mainEl = h('main', { class: 'main' });
+  mainEl = h('main', { class: 'main', id: 'main-content', tabindex: '-1' });
   drawerEl = h('div', { class: 'drawer-wrap', onmousedown: (e) => { if (e.target === drawerEl) closeDrawer(); } });
+  mnavEl = h('nav', { class: 'mobile-nav', 'aria-label': 'Điều hướng trên điện thoại' });
   shellEl = h('div', { class: 'shell' }, topEl, sideEl, mainEl);
-  fill(app, shellEl, drawerEl);
+  fill(app, shellEl, mnavEl, drawerEl);
 }
 
 function renderTop() {
@@ -166,6 +187,8 @@ function renderTop() {
     h('a', { class: 'brand', href: p && v !== 'pick' ? `#/p/${store.productId}/overview` : '#/pick' }, h('span', { class: 'mark' }, 'K'), h('b', { class: 'serif' }, 'KTIN')),
     p && v !== 'pick' ? h('div', { class: 'cur-product', title: 'Đổi sản phẩm: bấm ☰' }, productThumb(p), h('div', {}, h('small', {}, v === 'db' ? 'Đang nhập liệu' : 'Đang xem'), h('b', {}, p.name))) : null,
     h('div', { class: 'grow' }),
+    h('button', { class: 'top-search', title: 'Tìm mọi thứ (Ctrl + K)', onclick: openPalette }, h('span', { 'aria-hidden': 'true' }, '🔍'), h('span', { class: 'ts-l' }, 'Tìm…'), h('kbd', {}, 'Ctrl K')),
+    h('button', { class: 'icon-btn light top-theme', title: 'Chế độ sáng / tối (Ctrl + Shift + L)', onclick: toggleTheme }, '🌓'),
     db.demo ? h('span', { class: 'demo-pill', title: 'Dữ liệu chỉ lưu trên trình duyệt này' }, 'Bản xem thử') : null,
     db.demo ? h('button', { class: `btn btn-sm ${sim?.isRunning() ? 'btn-primary' : 'btn-ghost'}`, title: 'Giả lập 2 bạn cùng nhóm đang làm việc', onclick: toggleSim }, sim?.isRunning() ? '⏸ Dừng mô phỏng' : '▶ Mô phỏng nhóm') : null,
     h('div', { class: 'canva-group' },
@@ -178,7 +201,20 @@ function dbHref() {
   const sec = (r.view === 'product' && r.section !== 'overview') ? r.section : 'factory';
   return `#/db/${pid}/${sec}`;
 }
+// thanh dưới cùng trên điện thoại: Tổng quan · Tiến độ · Tin nhắn · Tài liệu · Menu
+function renderMobileNav() {
+  if (!mnavEl) return;
+  const r = store.route, pid = store.productId || store.products[0]?.id;
+  const it = (icon, label, href, on, badge) => h('a', { href, class: on ? 'on' : '', 'aria-current': on ? 'page' : null }, h('span', { class: 'mi', 'aria-hidden': 'true' }, icon), label, badge ? h('span', { class: 'badge-n' }, badge > 99 ? '99+' : badge) : null);
+  fill(mnavEl,
+    it('◎', 'Tổng quan', pid ? `#/p/${pid}/overview` : '#/pick', r.view === 'product' && r.section === 'overview'),
+    it('☑', 'Tiến độ', pid ? `#/db/${pid}/progress` : '#/pick', r.view === 'db' && r.section === 'progress'),
+    it('💬', 'Tin nhắn', '#/chat', r.view === 'chat', store.unread),
+    it('📁', 'Tài liệu', '#/docs/lecturer', r.view === 'docs'),
+    h('button', { onclick: openDrawer, 'aria-label': 'Mở menu' }, h('span', { class: 'mi', 'aria-hidden': 'true' }, '☰'), 'Menu'));
+}
 function renderSide() {
+  renderMobileNav();
   if (!sideEl) return;
   const r = store.route, pid = store.productId;
   shellEl.classList.remove('no-side');
@@ -193,6 +229,8 @@ function renderSide() {
   let nav;
   if (r.view === 'pick' || !pid) nav = [h('div', { class: 'side-head' }, 'Chọn sản phẩm'), store.products.map(p => h('a', { class: 'nav', href: `#/p/${p.id}/overview` }, h('span', { class: 'ni' }, '▸'), h('span', { class: 'nl' }, p.name)))];
   else if (r.view === 'db') nav = [h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu')), item(PROGRESS_SEC, 'db'), WORK_SECTIONS.map(s => item(s, 'db')),
+    h('a', { class: `nav ${r.section === CHECK_SEC.key ? 'on' : ''}`, href: `#/db/${pid}/check` }, h('span', { class: 'ni' }, '✓'), h('span', { class: 'nl' }, 'Kiểm tra số liệu')),
+    h('a', { class: 'nav', href: `#/report/${pid}` }, h('span', { class: 'ni' }, '⎙'), h('span', { class: 'nl' }, 'Xuất báo cáo Word / PDF')),
     h('a', { class: 'nav back', href: `#/p/${pid}/${r.section || 'overview'}` }, h('span', { class: 'ni' }, '←'), h('span', { class: 'nl' }, 'Về trang xem'))];
   else nav = [h('div', { class: 'side-head' }, 'Trang xem'), SECTIONS.map(s => item(s, 'view'))];
 
@@ -216,6 +254,7 @@ function renderSide() {
         h('div', { class: 'grow', onclick: openProfile, style: { cursor: 'pointer', minWidth: 0 } }, h('b', {}, me?.display_name || store.user.email), h('small', {}, store.user.email)),
         h('button', { class: 'icon-btn', title: 'Tài khoản', onclick: (e) => popMenu(e.currentTarget, [
           { icon: '👤', label: 'Hồ sơ của bạn', run: openProfile }, { icon: '✎', label: 'Sửa liên kết Canva', run: editCanva },
+          { icon: '🌓', label: 'Chế độ sáng / tối', run: toggleTheme }, { icon: '⌨', label: 'Bảng phím tắt (?)', run: openShortcuts }, { icon: '🗑', label: 'Thùng rác', run: () => go('#/trash') },
           db.demo ? { icon: '↺', label: 'Đặt lại dữ liệu mẫu', run: resetDemo } : null, '-', { icon: '⎋', label: 'Đăng xuất', danger: true, run: signOut }].filter(Boolean)) }, '⋯')),
       h('div', { class: 'dock-team' }, team.map(p => h('div', { class: `mate ${onlineIds.has(p.id) ? 'on' : ''}`, title: where(p.id) },
         h('span', { class: 'av-wrap' }, avatar(p, 26)), h('div', { class: 'grow' }, h('b', {}, p.display_name || p.email), h('small', {}, where(p.id))))))));
@@ -235,16 +274,22 @@ function openDrawer() {
       h('div', { class: 'dr-sec' }, 'Trang xem'),
       SECTIONS.map(sec => item(sec.n || '◎', sec.label, () => go(`#/p/${store.productId}/${sec.key}`), { on: store.route.view === 'product' && store.route.section === sec.key })),
       h('div', { class: 'dr-sec' }, 'Cơ sở dữ liệu (nhập liệu)'),
-      [PROGRESS_SEC, ...WORK_SECTIONS].map(sec => item(sec.n || '◎', sec.label, () => go(`#/db/${store.productId}/${sec.key}`), { on: store.route.view === 'db' && store.route.section === sec.key }))) : null,
+      [PROGRESS_SEC, ...WORK_SECTIONS, CHECK_SEC].map(sec => item(sec.n || '◎', sec.label, () => go(`#/db/${store.productId}/${sec.key}`), { on: store.route.view === 'db' && store.route.section === sec.key }))) : null,
     h('div', { class: 'dr-sec' }, 'Dùng chung'),
     item('🗄', 'Cơ sở dữ liệu', () => go(dbHref())),
     item('📁', 'Tài liệu', () => go('#/docs/lecturer')),
     item('💬', 'Tin nhắn', () => go('#/chat'), { right: store.unread ? h('span', { class: 'badge-n' }, store.unread) : null }),
     item('✏️', 'Bảng trắng nhóm', () => go('#/board')),
+    item('🔍', 'Tìm mọi thứ', openPalette, { sub: 'Ctrl + K' }),
+    store.productId ? item('✓', 'Kiểm tra số liệu trước khi nộp', () => go(`#/db/${store.productId}/check`)) : null,
+    store.productId ? item('⎙', 'Xuất báo cáo Word / PDF', () => go(`#/report/${store.productId}`)) : null,
+    item('🗑', 'Thùng rác', () => go('#/trash'), { sub: 'Khôi phục mục đã xoá trong 30 ngày' }),
     item('✦', 'Canva – mẫu thuyết trình', openCanva, { sub: canva ? canva.replace(/^https?:\/\//, '').slice(0, 40) : 'Chưa gắn liên kết' }),
     item('✎', 'Sửa liên kết Canva', editCanva),
     h('div', { class: 'dr-sec' }, 'Tài khoản'),
     item('👤', 'Hồ sơ của bạn', openProfile),
+    item('🌓', 'Chế độ sáng / tối', toggleTheme),
+    item('⌨', 'Bảng phím tắt', openShortcuts, { sub: 'phím ?' }),
     db.demo ? item('↺', 'Đặt lại dữ liệu mẫu', resetDemo) : null,
     item('⎋', 'Đăng xuất', signOut)));
   drawerEl.classList.add('open');
@@ -326,12 +371,21 @@ function route() {
       renderProduct(sec);
     } else {
       if (parts[2] === PROGRESS_SEC.key) { store.route = { view: 'db', section: PROGRESS_SEC.key, sub: null }; renderDbProgress(); }
+      else if (parts[2] === CHECK_SEC.key) { store.route = { view: 'db', section: CHECK_SEC.key, sub: null }; renderSimple('db', '✓', 'Kiểm tra số liệu trước khi nộp', (body, p) => mountCheck(body, { product: p })); }
       else {
         const sec = WORK_SECTIONS.find(s => s.key === parts[2]) || WORK_SECTIONS[0];
         store.route = { view: 'db', section: sec.key, sub: parts[3] || null };
         renderDb(sec);
       }
     }
+  } else if (parts[0] === 'report' && productOf(parts[1])) {
+    store.productId = parts[1]; mem.set(LAST, parts[1]);
+    store.route = { view: 'report', section: 'report' };
+    renderSimple('report', '⎙', 'Xuất báo cáo thuyết minh', (body, p) => mountReport(body, { product: p }));
+  } else if (parts[0] === 'trash') {
+    store.productId = fallbackPid();
+    store.route = { view: 'trash' };
+    renderSimple('trash', '🗑', 'Thùng rác', (body) => mountTrash(body));
   } else if (parts[0] === 'docs') {
     store.productId = fallbackPid();
     store.route = { view: 'docs', branch: parts[1] === 'team' ? 'team' : 'lecturer' };
@@ -421,6 +475,18 @@ async function renderDbProgress() {
       h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm', href: `#/p/${p.id}/overview` }, '👁 Xem ở Tổng quan')));
   fill(mainEl, h('div', { class: 'page-full' }, head, body));
   cleanup = mountProgressEditor(body, { product: p, folder });
+}
+
+// trang đơn giản: tiêu đề + nội dung (Kiểm tra số liệu, Xuất báo cáo, Thùng rác)
+function renderSimple(mode, icon, title, mount) {
+  const p = productOf(store.productId);
+  setWhere({ productId: p?.id || null, section: store.route.section || mode, sectionLabel: title, docs: false, mode: mode === 'db' ? 'db' : null });
+  const body = h('div', { class: 'tab-body' });
+  const head = h('div', { class: `page-head ${mode === 'db' ? 'db' : ''}` },
+    h('div', { class: 'crumbs' }, mode === 'db' ? [h('span', {}, '🗄 Cơ sở dữ liệu'), h('span', {}, '›')] : null, p && mode !== 'trash' ? [h('span', {}, p.name), h('span', {}, '›')] : null, h('span', {}, title)),
+    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, icon), h('h1', { class: 'serif' }, title)));
+  fill(mainEl, h('div', { class: 'page-full' }, head, body));
+  cleanup = mount(body, p);
 }
 
 async function renderBoard() {

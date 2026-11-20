@@ -2,6 +2,7 @@ import db, { logActivity } from '../db.js';
 import { store, on, nameOf, profileOf, folderOf, productOf, docsFolder, companyFolder } from '../store.js';
 import { SECTIONS } from './templates.js';
 import { h, fmtSize, fmtTime, fileIcon, toast, toastErr, prompt, confirmBox, modal, avatar, popMenu, fill, downloadNote } from '../ui.js';
+import { softDelete } from '../trash.js';
 
 const safeKey = (name) => name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-80);
 const rid = () => Math.random().toString(36).slice(2, 10);
@@ -224,13 +225,8 @@ export function mountFiles(el, { folder, aggregate = false, lecturer = false }) 
       { icon: '💬', label: 'Mô tả ngắn', run: async () => { const d = await prompt('Mô tả', 'Mô tả (VD: bản đã sửa chương 3)', f.description || ''); if (d !== null) db.update('files', f.id, { description: d }).catch(toastErr); } },
       '-',
       { icon: '🗑️', label: 'Xoá (kèm mọi phiên bản)', danger: true, run: async () => {
-        if (!await confirmBox('Xoá tài liệu?', `Xoá “${f.name}” và tất cả phiên bản cũ. Không thể hoàn tác.`)) return;
-        try {
-          for (const v of files.filter(x => x.parent_file_id === f.id)) await db.removeFile(v.storage_path).catch(() => {});
-          if (f.storage_path) await db.removeFile(f.storage_path).catch(() => {});
-          await db.remove('files', f.id);
-          logActivity(store.user, 'đã xoá', f.name);
-        } catch (e) { toastErr(e); }
+        // không hỏi lại: xoá xong có nút “Hoàn tác”, tệp nằm trong 🗑 Thùng rác 30 ngày
+        try { await softDelete('files', f.id, { label: f.name, what: 'tệp' }); } catch (e) { toastErr(e); }
       } },
     ].filter(Boolean));
   }

@@ -5,7 +5,8 @@ import db, { logActivity } from '../db.js';
 import { store, on } from '../store.js';
 import { h, fill, toastErr, confirmBox } from '../ui.js';
 import { STATUS, STEPS, SECTIONS } from './templates.js';
-import { ensureProgress, stepSection } from './dashboard.js';
+import { ensureProgress, stepSection, stepDone } from './dashboard.js';
+import { softDelete } from '../trash.js';
 
 export function mountProgressEditor(el, { product, folder }) {
   let prog = null, rows = [];
@@ -15,11 +16,11 @@ export function mountProgressEditor(el, { product, folder }) {
   const now = () => new Date().toISOString();
   const save = (r, patch) => { r.cells = { ...r.cells, ...patch }; return db.update('data_rows', r.id, { cells: r.cells, updated_by: store.user.id, updated_at: now() }).catch(toastErr); };
   // đánh lại số bước 1, 2, 3… sau khi thêm / xoá / đổi chỗ (giữ nguyên mục liên kết của từng bước)
-  async function renumber() {
+  async function renumber(keepPos = false) {
     rows.sort((a, b) => a.position - b.position);
     await Promise.all(rows.map((r, i) => {
       const muc = 'muc' in r.cells ? r.cells.muc : (stepSection(r.cells)?.key || '');
-      const pos = i;
+      const pos = keepPos ? r.position : i;   // xoá bước: giữ nguyên vị trí để “Hoàn tác” trả bước về đúng chỗ
       if (r.cells.buoc === String(i + 1) && 'muc' in r.cells && r.position === pos) return null;
       r.position = pos; r.cells = { ...r.cells, buoc: String(i + 1), muc };
       return db.update('data_rows', r.id, { cells: r.cells, position: pos, updated_by: store.user.id, updated_at: now() });
@@ -38,8 +39,13 @@ export function mountProgressEditor(el, { product, folder }) {
     } catch (e) { toastErr(e); }
   }
   async function del(r) {
-    if (!await confirmBox('Xoá bước?', `Xoá bước “${r.cells.noidung || ''}” khỏi tiến độ đồ án?`)) return;
-    try { rows = rows.filter(x => x.id !== r.id); await db.remove('data_rows', r.id); await renumber(); logActivity(store.user, 'xoá bước tiến độ', r.cells.noidung || ''); } catch (e) { toastErr(e); }
+    try {
+      rows = rows.filter(x => x.id !== r.id); render();
+      await softDelete('data_rows', r.id, { label: r.cells.noidung || 'Bước', what: 'bước tiến độ', onUndo: async () => {
+        rows = (await db.select('data_rows', { eq: { table_id: prog.id } })).sort((a, b) => a.position - b.position); await renumber(true);
+      } });
+      await renumber(true);
+    } catch (e) { toastErr(e); }
   }
   async function move(i, d) {
     const a = rows[i], b = rows[i + d]; if (!a || !b) return;
@@ -86,7 +92,7 @@ export function mountProgressEditor(el, { product, folder }) {
             h('td', {}, h('select', { class: 'select sel-sm', onchange: (e) => save(r, { muc: e.target.value }) }, h('option', { value: '' }, '— Không liên kết —'), SECTIONS.filter(s => s.n).map(s => h('option', { value: s.key, selected: cur === s.key }, `${s.n}. ${s.label}`)))),
             h('td', {}, h('select', { class: 'select sel-sm', onchange: (e) => save(r, { phutrach: e.target.value }) }, h('option', { value: '' }, '— Phụ trách —'), people.map(pp => h('option', { value: pp.id, selected: c.phutrach === pp.id }, pp.display_name || pp.email)))),
             h('td', {}, h('input', { class: 'input sel-sm', type: 'date', value: c.han || '', onchange: (e) => save(r, { han: e.target.value }) })),
-            h('td', {}, h('select', { class: 'select sel-sm', onchange: (e) => save(r, { trangthai: e.target.value }) }, STATUS.map(st => h('option', { selected: c.trangthai === st }, st)))),
+            h('td', {}, h('select', { class: 'select sel-sm', onchange: (e) => { const was = r.cells.trangthai, v = e.target.value; save(r, { trangthai: v }); if (v === 'Xong' && was !== 'Xong') stepDone(r.cells.noidung, rows); } }, STATUS.map(st => h('option', { selected: c.trangthai === st }, st)))),
             h('td', { class: 'pe-acts' },
               h('button', { class: 'icon-btn', title: 'Chèn bước phía trên', onclick: () => add(i) }, '＋'),
               h('button', { class: 'icon-btn', title: 'Lên', disabled: i === 0, onclick: () => move(i, -1) }, '↑'),
