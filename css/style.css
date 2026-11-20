@@ -972,3 +972,36 @@ kbd { font-family: 'Anonymous Pro', ui-monospace, monospace; font-size: 11.5px; 
 .mobile-nav .mi { font-size: 18px; line-height: 1.2; }
 .mobile-nav .on { background: rgba(243, 230, 204, .16); color: #fff; }
 .mobile-nav .badge-n { top: 2px; right: 14px; }
+/* ---------- thanh bên thu gọn (⇤ hoặc Ctrl + B) ---------- */
+.side-toggle { font-size: 17px; }
+@media (max-width: 1000px) { .side-toggle { display: none; } }
+.shell.side-mini { grid-template-columns: 64px 1fr; }
+.side-mini .side-nav { padding: 10px 6px; }
+.side-mini .side-head, .side-mini .db-head, .side-mini .nav .nl, .side-mini .nav .here, .side-mini .dock-ic .dl, .side-mini .dock-me .grow, .side-mini .dock-me .icon-btn, .side-mini .mate .grow { display: none; }
+.side-mini .nav { justify-content: center; padding: 8px 0; }
+.side-mini .nav.back { margin-top: 10px; }
+.side-mini .side-dock { padding: 8px 6px; }
+.side-mini .dock-icons { grid-template-columns: 1fr; }
+.side-mini .dock-ic { min-height: 40px; }
+.side-mini .dock-me { justify-content: center; padding: 6px; }
+.side-mini .mate { justify-content: center; padding: 3px 0; }
+.side-mini .dock-team { max-height: 110px; }
+/* ---------- bảng trắng gọn: tiêu đề nằm chung dòng chọn bảng, thanh công cụ một hàng ---------- */
+.wb-page { background: var(--paper); }
+.wb-page:fullscreen { width: 100vw; height: 100vh; }
+.wb-page:fullscreen .wb-body { height: 100%; }
+.wb-title { font-size: 15px; white-space: nowrap; }
+.wb-pick { padding: 4px 10px; gap: 5px; min-height: 40px; }
+.wb-pick .dt-pill { padding: 4px 10px; font-size: 12.5px; }
+.wb-pick .btn-sm { padding: 4px 9px; font-size: 12px; }
+.wb-help { font-size: 15px; cursor: help; }
+.wb-bar { padding: 4px 10px; gap: 4px; }
+.wb-bar .wb-tool { padding: 4px 8px; font-size: 12px; }
+.wb-bar .swatch { width: 18px; height: 18px; }
+.wb-bar .wb-sep { height: 20px; margin: 0 2px; }
+.wb-fmt { padding: 4px 10px; min-height: 38px; }
+.wb-canvas.space-pan, .wb-canvas.space-pan * { cursor: grab !important; }
+.wb { container-type: inline-size; }
+.wb-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.wb-bar > * { flex: none; }
+@container (max-width: 1240px) { .wb-bar .tl { display: none; } .wb-bar .wb-tool { padding: 4px 7px; } }

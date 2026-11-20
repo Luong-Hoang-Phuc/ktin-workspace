@@ -104,11 +104,20 @@ export function mountBoards(el, { folder, sub, go }) {
 
   // ---------- danh sách bảng ----------
   function renderPick() {
-    fill(pick, h('b', { class: 'small muted' }, 'Bảng:'),
+    fill(pick, h('b', { class: 'wb-title serif' }, '✏️ Bảng trắng nhóm'), h('span', { class: 'wb-sep' }), h('b', { class: 'small muted' }, 'Bảng:'),
       boards.map(b => h('button', { class: `dt-pill ${board?.id === b.id ? 'on' : ''}`, onclick: () => openBoard(b.id), oncontextmenu: (e) => { e.preventDefault(); boardMenu(b, e.currentTarget); } }, b.name)),
       h('button', { class: 'btn btn-sm', onclick: newBoard }, '＋ Bảng mới'),
-      board ? h('button', { class: 'icon-btn', title: 'Tuỳ chọn bảng', onclick: (e) => boardMenu(board, e.currentTarget) }, '⋯') : null);
+      board ? h('button', { class: 'icon-btn', title: 'Tuỳ chọn bảng', onclick: (e) => boardMenu(board, e.currentTarget) }, '⋯') : null,
+      h('div', { class: 'grow' }),
+      h('button', { class: 'icon-btn wb-help', title: 'Kéo vùng trống để quét chọn (Shift để chọn thêm) · giữ phím cách / chuột phải / chuột giữa hoặc ✋ để kéo bảng · Nhấp đúp hoặc Enter để sửa chữ · phím ? xem mọi phím tắt' }, 'ⓘ'),
+      h('button', { class: 'btn btn-sm', title: 'Toàn màn hình – chỉ còn bảng trắng (Esc để thoát)', onclick: toggleFull }, document.fullscreenElement ? '🗗 Thoát toàn màn hình' : '⛶ Toàn màn hình'));
   }
+  function toggleFull() {
+    const host = root.closest('.page-full') || root;
+    if (document.fullscreenElement) document.exitFullscreen?.(); else host.requestFullscreen?.().catch(() => toast('Trình duyệt không cho phép toàn màn hình', 'error'));
+  }
+  const onFull = () => { renderPick(); setTimeout(() => { applyView(); redraw(); }, 60); };
+  document.addEventListener('fullscreenchange', onFull);
   async function newBoard() {
     const name = await prompt('Bảng trắng mới', 'Tên bảng', 'Sơ đồ quy trình');
     if (!name) return;
@@ -125,10 +134,12 @@ export function mountBoards(el, { folder, sub, go }) {
   }
 
   // ---------- thanh công cụ ----------
+  // nhãn = biểu tượng + chữ; bảng trắng hẹp thì chỉ hiện biểu tượng (rê chuột xem tên) để thanh công cụ nằm gọn 1 hàng
+  const lbl = (label) => { const i = label.indexOf(' '); return [h('span', { class: 'ti' }, label.slice(0, i)), h('span', { class: 'tl' }, ' ' + label.slice(i + 1))]; };
   function renderBar() {
     fill(bar, 
-      TOOLS.map(([k, label, key]) => h('button', { class: `wb-tool ${tool === k ? 'on' : ''}`, title: `${label} (${key})`, onclick: () => setTool(k) }, label)),
-      h('button', { class: 'wb-tool', disabled: !board, title: 'Thêm hình từ máy (hoặc dán Ctrl + V / kéo thả ảnh vào bảng)', onclick: () => imgPicker.click() }, '🖼 Hình'),
+      TOOLS.map(([k, label, key]) => h('button', { class: `wb-tool ${tool === k ? 'on' : ''}`, title: `${label} (${key})`, onclick: () => setTool(k) }, lbl(label))),
+      h('button', { class: 'wb-tool', disabled: !board, title: 'Thêm hình từ máy (hoặc dán Ctrl + V / kéo thả ảnh vào bảng)', onclick: () => imgPicker.click() }, lbl('🖼 Hình')),
       h('span', { class: 'wb-sep' }),
       h('button', { class: 'wb-tool', disabled: !board || !undoStack.length, title: 'Hoàn tác thao tác trước của bạn (Ctrl + Z)', onclick: undo }, '↶'),
       h('button', { class: 'wb-tool', disabled: !board || !redoStack.length, title: 'Làm lại (Ctrl + Y hoặc Ctrl + Shift + Z)', onclick: redo }, '↷'),
@@ -139,10 +150,9 @@ export function mountBoards(el, { folder, sub, go }) {
       h('button', { class: 'wb-tool', disabled: !sel, title: 'Đưa lên trên', onclick: () => sel && patchZ(sel) }, '⬆️'),
       h('button', { class: 'wb-tool', disabled: !sel, title: 'Nhân bản (Ctrl+D)', onclick: dup }, '⧉'),
       h('span', { class: 'wb-sep' }),
-      h('button', { class: 'wb-tool', disabled: ![...selSet].some(id => items.get(id)?.kind !== 'group'), title: 'Gom các mục đang chọn thành nhóm có tiêu đề (Ctrl+G)', onclick: makeGroup }, '▣ Nhóm'),
-      h('button', { class: 'wb-tool', disabled: ![...selSet].some(id => items.get(id)?.kind === 'group'), title: 'Bỏ khung nhóm, giữ lại các ghi chú bên trong (Ctrl+Shift+G)', onclick: ungroup }, 'Bỏ nhóm'),
-      h('div', { class: 'grow' }),
-      h('span', { class: 'small muted' }, 'Kéo vùng trống để quét chọn (Shift để chọn thêm) · chuột phải/giữa hoặc ✋ để kéo bảng · Nhấp đúp hoặc Enter để sửa chữ'));
+      h('button', { class: 'wb-tool', disabled: ![...selSet].some(id => items.get(id)?.kind !== 'group'), title: 'Gom các mục đang chọn thành nhóm có tiêu đề (Ctrl+G)', onclick: makeGroup }, lbl('▣ Nhóm')),
+      h('button', { class: 'wb-tool', disabled: ![...selSet].some(id => items.get(id)?.kind === 'group'), title: 'Bỏ khung nhóm, giữ lại các ghi chú bên trong (Ctrl+Shift+G)', onclick: ungroup }, lbl('⊟ Bỏ nhóm')),
+);
     renderFmt();
     fill(zoomBox, h('button', { class: 'icon-btn', onclick: () => zoomAt(1 / 1.2) }, '－'), h('span', { class: 'small', style: { padding: '4px 6px', minWidth: '44px', textAlign: 'center' } }, Math.round(view.z * 100) + '%'), h('button', { class: 'icon-btn', onclick: () => zoomAt(1.2) }, '＋'), h('button', { class: 'icon-btn', title: 'Vừa khung', onclick: fit }, '⤢'));
   }
@@ -531,7 +541,7 @@ export function mountBoards(el, { folder, sub, go }) {
     const handle = e.target.getAttribute?.('data-handle');
     lastDown = g ? g.getAttribute('data-id') : null;
     canvas.setPointerCapture(e.pointerId);
-    if (tool === 'pan' || e.button === 1 || e.button === 2) {
+    if (tool === 'pan' || e.button === 1 || e.button === 2 || spaceDown) {
       drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; canvas.style.cursor = 'grabbing'; return;
     }
     // Kéo trên vùng trống = quét chọn vùng (giữ Shift để chọn thêm vào các mục đang chọn)
@@ -978,6 +988,20 @@ export function mountBoards(el, { folder, sub, go }) {
   root.append(imgPicker);
   canvas.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); });
   canvas.addEventListener('drop', (e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); addImages(e.dataTransfer.files, toWorld(e)); });
+  // giữ phím cách = kéo bảng như bàn tay (giống Canva / Figma), thả ra là về công cụ cũ
+  let spaceDown = false;
+  const typingNow = () => { const a = document.activeElement; return a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); };
+  const onSpace = (e) => {
+    if (e.code !== 'Space' || !root.isConnected || !board || typingNow() || document.querySelector('.modal-wrap, .pal-wrap')) return;
+    e.preventDefault(); e.stopPropagation();
+    const down = e.type === 'keydown';
+    if (down === spaceDown) return;
+    spaceDown = down; canvas.classList.toggle('space-pan', down);
+  };
+  const offSpace = () => { spaceDown = false; canvas.classList.remove('space-pan'); };
+  document.addEventListener('keydown', onSpace, true);
+  document.addEventListener('keyup', onSpace, true);
+  addEventListener('blur', offSpace);
   const onPaste = (e) => {
     if (!root.isConnected || e.target.closest?.('input, textarea, [contenteditable]')) return;
     const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
@@ -1008,5 +1032,5 @@ export function mountBoards(el, { folder, sub, go }) {
     const i = boards.findIndex(b => b.id === e.new.id); if (i >= 0) boards[i] = e.new; else boards.push(e.new);
     if (board?.id === e.new.id) board = e.new; renderPick();
   }));
-  return () => { offs.forEach(f => f()); offItems?.(); room?.close(); clearInterval(curTick); document.removeEventListener('paste', onPaste); document.removeEventListener('keydown', onUndoKey); };
+  return () => { offs.forEach(f => f()); offItems?.(); room?.close(); clearInterval(curTick); document.removeEventListener('paste', onPaste); document.removeEventListener('keydown', onSpace, true); document.removeEventListener('keyup', onSpace, true); removeEventListener('blur', offSpace); document.removeEventListener('fullscreenchange', onFull); if (document.fullscreenElement) document.exitFullscreen?.(); document.removeEventListener('keydown', onUndoKey); };
 }

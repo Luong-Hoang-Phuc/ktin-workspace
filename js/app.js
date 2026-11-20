@@ -53,7 +53,7 @@ function upsertList(list, row) { const i = list.findIndex(x => x.id === row.id);
 
 async function start(user, fresh = false) {
   store.user = user;
-  store.actions = { popMenu, openCanva, editCanva, go, openProfile, toggleTheme };
+  store.actions = { popMenu, openCanva, editCanva, go, openProfile, toggleTheme, toggleSide };
   initNet();
   let profiles = await db.select('profiles');
   if (!profiles.find(p => p.id === user.id)) {
@@ -175,8 +175,17 @@ function renderShell() {
   mnavEl = h('nav', { class: 'mobile-nav', 'aria-label': 'Điều hướng trên điện thoại' });
   shellEl = h('div', { class: 'shell' }, topEl, sideEl, mainEl);
   fill(app, shellEl, mnavEl, drawerEl);
+  applySide();
 }
 
+// ---------- thu gọn thanh bên trái (còn dải icon) – nhớ trên trình duyệt ----------
+const SIDE = 'ktin-side-mini';
+const sideMini = () => mem.get(SIDE) === '1';
+function applySide() { shellEl?.classList.toggle('side-mini', sideMini()); }
+function toggleSide() {
+  mem.set(SIDE, sideMini() ? null : '1'); applySide(); renderTop();
+  setTimeout(() => dispatchEvent(new Event('resize')), 60);
+}
 function renderTop() {
   if (!topEl) return;
   const p = productOf(store.productId);
@@ -184,6 +193,7 @@ function renderTop() {
   const canva = store.settings.get('canva_url');
   fill(topEl,
     h('button', { class: 'burger', title: 'Menu · chuyển sản phẩm', onclick: openDrawer }, h('span'), h('span'), h('span')),
+    h('button', { class: 'icon-btn light side-toggle', title: sideMini() ? 'Mở rộng thanh bên (Ctrl + B)' : 'Thu gọn thanh bên để rộng chỗ làm việc (Ctrl + B)', 'aria-pressed': sideMini(), onclick: toggleSide }, sideMini() ? '⇥' : '⇤'),
     h('a', { class: 'brand', href: p && v !== 'pick' ? `#/p/${store.productId}/overview` : '#/pick' }, h('span', { class: 'mark' }, 'K'), h('b', { class: 'serif' }, 'KTIN')),
     p && v !== 'pick' ? h('div', { class: 'cur-product', title: 'Đổi sản phẩm: bấm ☰' }, productThumb(p), h('div', {}, h('small', {}, v === 'db' ? 'Đang nhập liệu' : 'Đang xem'), h('b', {}, p.name))) : null,
     h('div', { class: 'grow' }),
@@ -222,7 +232,7 @@ function renderSide() {
   const here = (key, mode) => store.online.filter(o => o.id !== store.user.id && (key === 'factory' || o.productId === pid) && o.section === key && (o.mode || 'view') === mode);
   const item = (s, mode) => {
     const on = r.view === (mode === 'db' ? 'db' : 'product') && r.section === s.key;
-    return h('a', { class: `nav ${on ? 'on' : ''}`, href: mode === 'db' ? `#/db/${pid}/${s.key}` : `#/p/${pid}/${s.key}` },
+    return h('a', { class: `nav ${on ? 'on' : ''}`, title: (s.n ? s.n + '. ' : '') + s.label, href: mode === 'db' ? `#/db/${pid}/${s.key}` : `#/p/${pid}/${s.key}` },
       h('span', { class: 'ni' }, s.n ? String(s.n) : '◎'), h('span', { class: 'nl' }, s.label),
       here(s.key, mode).length ? h('span', { class: 'here' }, here(s.key, mode).slice(0, 3).map(o => avatar({ display_name: o.name, color: o.color }, 18))) : null);
   };
@@ -492,8 +502,7 @@ function renderSimple(mode, icon, title, mount) {
 async function renderBoard() {
   setWhere({ productId: null, section: 'board', sectionLabel: 'Bảng trắng', docs: false, mode: null });
   const body = h('div', { class: 'tab-body wb-body' });
-  const head = h('div', { class: 'page-head' }, h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, '✏️'), h('h1', { class: 'serif' }, 'Bảng trắng nhóm')));
-  fill(mainEl, h('div', { class: 'page-full' }, head, body));
+  fill(mainEl, h('div', { class: 'page-full wb-page' }, body));   // tiêu đề thu gọn vào dòng chọn bảng → vùng vẽ rộng hơn
   let folder = docsFolder('board');
   if (!folder) {
     try {

@@ -64,6 +64,7 @@ function commands() {
     { icon: '👤', label: 'Hồ sơ của bạn (tên, màu)', run: () => A.openProfile?.() },
     { icon: '🌓', label: 'Bật / tắt chế độ tối', sub: 'Ctrl + Shift + L', run: () => A.toggleTheme?.() },
     { icon: '⌨', label: 'Bảng phím tắt', sub: 'phím ?', run: openShortcuts },
+    { icon: '⇤', label: 'Thu gọn / mở rộng thanh bên trái', sub: 'Ctrl + B', run: () => A.toggleSide?.() },
     { icon: '✦', label: 'Mở Canva của nhóm', run: () => A.openCanva?.() },
   );
   return list.map(c => ({ ...c, group: 'Lệnh & mục', key: norm(c.label + ' ' + (c.sub || '')) }));
@@ -153,10 +154,10 @@ export function openPalette() {
 
 // ---------- bảng phím tắt ----------
 const SHORTCUTS = [
-  ['Chung', [['Ctrl + K', 'Tìm mọi thứ / chạy lệnh nhanh'], ['?', 'Mở bảng phím tắt này'], ['Ctrl + Shift + L', 'Bật / tắt chế độ tối'], ['Esc', 'Đóng hộp thoại, menu']]],
+  ['Chung', [['Ctrl + K', 'Tìm mọi thứ / chạy lệnh nhanh'], ['?', 'Mở bảng phím tắt này'], ['Ctrl + Shift + L', 'Bật / tắt chế độ tối'], ['Ctrl + B', 'Thu gọn / mở rộng thanh bên trái'], ['Esc', 'Đóng hộp thoại, menu']]],
   ['Bảng tính (Cơ sở dữ liệu)', [['Enter', 'Lưu ô, xuống ô dưới'], ['Tab / Shift + Tab', 'Sang ô phải / trái'], ['Esc', 'Huỷ chữ đang gõ trong ô'], ['Ctrl + Z', 'Hoàn tác thao tác của bạn'], ['Ctrl + Y · Ctrl + Shift + Z', 'Làm lại'],
     ['Kéo chuột · Shift + nhấp', 'Chọn nhiều ô (để gộp ô)'], ['Ctrl + V', 'Dán nhiều ô từ Excel'], ['Chuột phải vào ô', 'Bình luận / giao việc (@tên)'], ['Bấm đúp ô xám', 'Sửa công thức của ô']]],
-  ['Bảng trắng', [['V · H', 'Chọn · Kéo bảng'], ['N · T · R · O', 'Ghi chú · Chữ · Khung · Elip'], ['A · P · B', 'Mũi tên · Bút · Bảng'], ['Enter / F2 / nhấp đúp', 'Sửa chữ'], ['Delete', 'Xoá mục đang chọn'],
+  ['Bảng trắng', [['V · H', 'Chọn · Kéo bảng'], ['Giữ phím cách + kéo', 'Kéo bảng (đang ở công cụ nào cũng được)'], ['N · T · R · O', 'Ghi chú · Chữ · Khung · Elip'], ['A · P · B', 'Mũi tên · Bút · Bảng'], ['Enter / F2 / nhấp đúp', 'Sửa chữ'], ['Delete', 'Xoá mục đang chọn'],
     ['Ctrl + Z · Ctrl + Y', 'Hoàn tác · Làm lại'], ['Ctrl + A', 'Chọn tất cả'], ['Ctrl + D', 'Nhân bản'], ['Ctrl + G · Ctrl + Shift + G', 'Nhóm · Bỏ nhóm'], ['Kéo vùng trống · Shift', 'Quét chọn · chọn thêm'],
     ['Chuột phải / giữa + kéo', 'Kéo bảng'], ['Alt khi kéo', 'Tắt tự hút thẳng hàng'], ['Ctrl + lăn chuột', 'Phóng to / thu nhỏ']]],
   ['Tin nhắn', [['Enter', 'Gửi'], ['Shift + Enter', 'Xuống dòng'], ['Esc', 'Huỷ trả lời'], ['Ctrl + V', 'Dán ảnh để gửi']]],
@@ -174,6 +175,7 @@ export function installGlobalKeys() {
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'k') { e.preventDefault(); openPalette(); return; }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && k === 'l') { e.preventDefault(); store.actions.toggleTheme?.(); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && k === 'b' && !document.activeElement?.closest?.('textarea, input')) { e.preventDefault(); store.actions.toggleSide?.(); return; }
     if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
       const a = document.activeElement;
       if (a && (a.closest('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], .wb-canvas') || a.isContentEditable)) return;
