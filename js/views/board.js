@@ -10,7 +10,8 @@ const TOOLS = [
   ['rect', '▭ Khung', 'R'], ['ellipse', '◯ Elip', 'O'], ['arrow', '➜ Mũi tên', 'A'], ['path', '✏️ Bút', 'P'],
 ];
 const BOX = new Set(['sticky', 'text', 'rect', 'ellipse']);
-const RECT = new Set([...BOX, 'group']);   // hình có x, y, w, h
+const RECT = new Set([...BOX, 'group', 'image']);   // hình có x, y, w, h
+const IMG_SIDE = 1920, IMG_MAX_MB = 20;
 const GROUP_HEAD = 40;
 const FONTS = [
   ['Montserrat', "'Montserrat', sans-serif"], ['Roboto', "'Roboto', sans-serif"], ['Arial', 'Arial, Helvetica, sans-serif'],
@@ -70,6 +71,7 @@ export function mountBoards(el, { folder, sub, go }) {
   function renderBar() {
     fill(bar, 
       TOOLS.map(([k, label, key]) => h('button', { class: `wb-tool ${tool === k ? 'on' : ''}`, title: `${label} (${key})`, onclick: () => setTool(k) }, label)),
+      h('button', { class: 'wb-tool', disabled: !board, title: 'Thêm hình từ máy (hoặc dán Ctrl + V / kéo thả ảnh vào bảng)', onclick: () => imgPicker.click() }, '🖼 Hình'),
       h('span', { class: 'wb-sep' }),
       COLORS.map(c => h('span', { class: `swatch ${color === c ? 'on' : ''}`, style: { background: c }, title: 'Màu', onclick: () => { color = c; selSet.forEach(id => { if (items.get(id)) patch(id, { color: c }, true); }); renderBar(); } })),
       h('span', { class: 'wb-sep' }),
@@ -125,7 +127,13 @@ export function mountBoards(el, { folder, sub, go }) {
   function drawItem(it) {
     let d = it.data; const g = S('g', { class: 'wb-item', 'data-id': it.id });
     const stroke = d.color || '#1f2937';
-    if (it.kind === 'group') {
+    if (it.kind === 'image') {
+      g.append(S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, fill: '#fff', stroke: '#e2d6c0', 'stroke-width': 1 }));
+      const im = S('image', { x: d.x, y: d.y, width: d.w, height: d.h, preserveAspectRatio: 'xMidYMid meet' });
+      imgUrl(d.path).then(u => im.setAttribute('href', u)).catch(() => {});
+      if (imgCache.get(d.path)?.url) im.setAttribute('href', imgCache.get(d.path).url);
+      g.append(im);
+    } else if (it.kind === 'group') {
       const col = d.color || COLORS[0];
       g.append(S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, rx: 10, fill: col, 'fill-opacity': .22, stroke: col, 'stroke-width': 2 }));
       g.append(S('path', { d: `M${d.x} ${d.y + GROUP_HEAD} V${d.y + 10} Q${d.x} ${d.y} ${d.x + 10} ${d.y} H${d.x + d.w - 10} Q${d.x + d.w} ${d.y} ${d.x + d.w} ${d.y + 10} V${d.y + GROUP_HEAD} Z`, fill: col, 'fill-opacity': .75 }));
@@ -278,7 +286,7 @@ export function mountBoards(el, { folder, sub, go }) {
       // Nhấp 2 lần vào cùng một mục → sửa chữ (tự nhận, không phụ thuộc sự kiện dblclick của trình duyệt
       // vì bảng vẽ lại sau lần nhấp đầu làm trình duyệt bỏ lỡ nhấp đúp)
       const now = Date.now();
-      if (!e.shiftKey && !handle && lastClick && lastClick.id === id && now - lastClick.t < 450 && Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) < 6 && RECT.has(it.kind)) {
+      if (!e.shiftKey && !handle && lastClick && lastClick.id === id && now - lastClick.t < 450 && Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) < 6 && RECT.has(it.kind) && it.kind !== 'image') {
         lastClick = null; selectOnly(id); redraw(); renderBar(); editText(it); return;
       }
       lastClick = { id, t: now, x: e.clientX, y: e.clientY };
@@ -328,7 +336,8 @@ export function mountBoards(el, { folder, sub, go }) {
       drag.moved = true; redraw(); sendMoves(list);
     } else if (drag.mode === 'resize') {
       const it = items.get(drag.id); const o = drag.orig;
-      if (drag.handle === 'se') Object.assign(it.data, { w: Math.max(it.kind === 'group' ? 120 : 30, o.w + dx), h: Math.max(it.kind === 'group' ? GROUP_HEAD + 30 : 24, o.h + dy) });
+      if (drag.handle === 'se' && it.kind === 'image') { const k = Math.max(40 / o.w, (o.w + dx) / o.w); Object.assign(it.data, { w: Math.round(o.w * k), h: Math.round(o.h * k) }); }
+      else if (drag.handle === 'se') Object.assign(it.data, { w: Math.max(it.kind === 'group' ? 120 : 30, o.w + dx), h: Math.max(it.kind === 'group' ? GROUP_HEAD + 30 : 24, o.h + dy) });
       if (drag.handle === 'p1' || drag.handle === 'p2') {
         const one = drag.handle === 'p1', T = itemAt(p, one ? o.to : o.from);
         const q = arrowPts(o);   // toạ độ thật lúc bắt đầu kéo
@@ -367,7 +376,7 @@ export function mountBoards(el, { folder, sub, go }) {
     if (canvas.querySelector('.wb-text-edit')) return;
     const g = e.target.closest('.wb-item');
     const it = items.get(g ? g.getAttribute('data-id') : lastDown);
-    if (it && RECT.has(it.kind)) editText(it);
+    if (it && RECT.has(it.kind) && it.kind !== 'image') editText(it);
   });
   canvas.addEventListener('keydown', (e) => {
     if (e.target.closest('.wb-text-edit')) return;
@@ -376,7 +385,7 @@ export function mountBoards(el, { folder, sub, go }) {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') { e.preventDefault(); e.shiftKey ? ungroup() : makeGroup(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selSet.clear(); items.forEach((_, id) => selSet.add(id)); sel = [...selSet].pop() || null; redraw(); renderBar(); }
     else if (e.key === 'Escape') { selectOnly(null); redraw(); renderBar(); }
-    else if ((e.key === 'Enter' || e.key === 'F2') && sel && selSet.size === 1 && RECT.has(items.get(sel)?.kind)) { e.preventDefault(); editText(items.get(sel)); }
+    else if ((e.key === 'Enter' || e.key === 'F2') && sel && selSet.size === 1 && RECT.has(items.get(sel)?.kind) && items.get(sel)?.kind !== 'image') { e.preventDefault(); editText(items.get(sel)); }
     // Đang chọn 1 ghi chú/khung mà gõ phím chữ → vào sửa luôn, nối thêm chữ vào cuối
     else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && sel && selSet.size === 1 && BOX.has(items.get(sel)?.kind)) { e.preventDefault(); editText(items.get(sel), e.key); }
     else if (!e.ctrlKey && !e.metaKey) { const t = TOOLS.find(t => t[2] === e.key.toUpperCase()); if (t) setTool(t[0]); }
@@ -508,6 +517,60 @@ export function mountBoards(el, { folder, sub, go }) {
       items.set(e.new.id, e.new); redraw();
     });
   }
+  // ---------- hình ảnh ----------
+  const imgCache = new Map();   // path → { url, at, p }
+  function imgUrl(path) {
+    const c = imgCache.get(path);
+    if (c && Date.now() - c.at < 45 * 60e3) return c.p;   // liên kết tạm của kho tệp có hạn 1 giờ
+    const p = db.fileUrl(path).then(url => { imgCache.set(path, { url, at: Date.now(), p }); return url; });
+    imgCache.set(path, { url: c?.url, at: Date.now(), p });
+    p.catch(() => imgCache.delete(path));
+    return p;
+  }
+  async function shrinkImg(file) {
+    const bmp = await createImageBitmap(file).catch(() => null);
+    if (!bmp) return { blob: file, w: 400, h: 300 };
+    const k = Math.min(1, IMG_SIDE / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * k), hh = Math.round(bmp.height * k);
+    if (file.type === 'image/gif' || (k === 1 && file.size < 1.5e6)) { bmp.close?.(); return { blob: file, w, h: hh }; }
+    const c = document.createElement('canvas'); c.width = w; c.height = hh;
+    const g = c.getContext('2d'); const png = file.type === 'image/png';
+    if (!png) { g.fillStyle = '#fff'; g.fillRect(0, 0, w, hh); }
+    g.drawImage(bmp, 0, 0, w, hh); bmp.close?.();
+    const blob = await new Promise(r => c.toBlob(r, png ? 'image/webp' : 'image/jpeg', 0.86));
+    return blob && blob.size < file.size ? { blob, w, h: hh } : { blob: file, w, h: hh };
+  }
+  async function addImages(files, at) {
+    const imgs = [...(files || [])].filter(f => f.type.startsWith('image/'));
+    if (!imgs.length || !board) return;
+    const r = canvas.getBoundingClientRect();
+    let p = at || { x: (r.width / 2 - view.x) / view.z, y: (r.height / 2 - view.y) / view.z };
+    for (const f of imgs) {
+      if (f.size > IMG_MAX_MB * 1e6) { toastErr(new Error(`Ảnh “${f.name}” lớn hơn ${IMG_MAX_MB} MB.`)); continue; }
+      try {
+        const { blob, w, h: hh } = await shrinkImg(f);
+        const ext = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' })[blob.type || f.type] || 'img';
+        const path = `board/${board.id}/${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)}.${ext}`;
+        await db.upload(path, blob instanceof File ? blob : new File([blob], f.name, { type: blob.type }));
+        const k = Math.min(1, 420 / Math.max(w, hh));   // hiện trên bảng tối đa ~420 px, kéo góc để phóng to
+        const W = Math.max(40, Math.round(w * k)), H = Math.max(40, Math.round(hh * k));
+        await createItem('image', { x: Math.round(p.x - W / 2), y: Math.round(p.y - H / 2), w: W, h: H, path, name: f.name });
+        p = { x: p.x + 30, y: p.y + 30 };
+      } catch (e) { toastErr(e); }
+    }
+    setTool('select');
+  }
+  const imgPicker = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, onchange: () => { addImages(imgPicker.files); imgPicker.value = ''; } });
+  root.append(imgPicker);
+  canvas.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); });
+  canvas.addEventListener('drop', (e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); addImages(e.dataTransfer.files, toWorld(e)); });
+  const onPaste = (e) => {
+    if (!root.isConnected || e.target.closest?.('input, textarea, [contenteditable]')) return;
+    const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (fs.length) { e.preventDefault(); addImages(fs); }
+  };
+  document.addEventListener('paste', onPaste);
+
   function exportSvg() {
     const clone = svg.cloneNode(true);
     const bs = [...items.values()].map(bbox);
@@ -531,5 +594,5 @@ export function mountBoards(el, { folder, sub, go }) {
     const i = boards.findIndex(b => b.id === e.new.id); if (i >= 0) boards[i] = e.new; else boards.push(e.new);
     if (board?.id === e.new.id) board = e.new; renderPick();
   }));
-  return () => { offs.forEach(f => f()); offItems?.(); room?.close(); clearInterval(curTick); };
+  return () => { offs.forEach(f => f()); offItems?.(); room?.close(); clearInterval(curTick); document.removeEventListener('paste', onPaste); };
 }
