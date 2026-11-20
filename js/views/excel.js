@@ -10,6 +10,7 @@ import { h, toast, toastErr, modal, downloadNote } from '../ui.js';
 import { a1ToInternal, internalToA1, isFormula, parseNum, dateToSerial, colLetter, letterIdx, unsupportedIn, FErr } from '../formula.js';
 import { readXlsx, writeXlsx, safeSheetNames } from '../xlsx.js';
 import { bookOf, offsetOf } from './book.js';
+import { mergeMap } from './sheet.js';
 
 const keyOf = (label, used) => { let k = String(label).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) || 'cot'; let i = 2; const b = k; while (used.has(k)) k = b + i++; used.add(k); return k; };
 const norm = (s) => String(s ?? '').trim().toLowerCase();
@@ -42,7 +43,8 @@ export async function exportExcel(data, filename) {
       else if (typeof v === 'string' && c.type === 'number' && /^[-\d.,\s%]+$/.test(v) && parseNum(v) != null) v = parseNum(v);
       return { v, fmt };
     })));
-    return { name: names[i], rows: out, widths: t.columns.map(c => c.width || (c.type === 'number' ? 110 : 140)), bold: off ? new Set([0]) : null, freeze: off };
+    const merges = [...mergeMap(t.columns, rows).anchors.values()].map(m => `${colLetter(m.ci)}${m.ri + 1 + off}:${colLetter(m.ci + m.cs - 1)}${m.ri + m.rs + off}`);
+    return { name: names[i], merges, rows: out, widths: t.columns.map(c => c.width || (c.type === 'number' ? 110 : 140)), bold: off ? new Set([0]) : null, freeze: off };
   });
   const blob = await writeXlsx(sheets);
   const a = h('a', { href: URL.createObjectURL(blob), download: filename.replace(/[\\/:*?"<>|]/g, '-') + '.xlsx' });

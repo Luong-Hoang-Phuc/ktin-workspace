@@ -141,7 +141,7 @@ export async function writeXlsx(sheets) {
     }).join('');
     const cols = (s.widths || []).map((w, i) => w ? `<col min="${i + 1}" max="${i + 1}" width="${Math.max(6, Math.round((w - 5) / 7))}" customWidth="1"/>` : '').join('');
     const pane = s.freeze ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${s.freeze}" topLeftCell="A${s.freeze + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` : '';
-    zip.file(`xl/worksheets/sheet${si + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${MAIN}" xmlns:r="${REL}">${pane}${cols ? `<cols>${cols}</cols>` : ''}<sheetData>${rowsXml}</sheetData></worksheet>`);
+    zip.file(`xl/worksheets/sheet${si + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${MAIN}" xmlns:r="${REL}">${pane}${cols ? `<cols>${cols}</cols>` : ''}<sheetData>${rowsXml}</sheetData>${s.merges?.length ? `<mergeCells count="${s.merges.length}">${s.merges.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : ''}</worksheet>`);
   });
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
 }

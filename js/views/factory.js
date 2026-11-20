@@ -236,6 +236,22 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
   const box = h('div');
   wrap.append(tools, box); el.append(wrap);
   const st = factoryData(() => { if (!box.contains(document.activeElement)) render(); });
+  const stageNodes = (mId) => st.nodes.filter(x => x.kind === 'machine' && x.machine_id === mId);
+  // danh sách thả xuống các công đoạn (lấy từ Sơ đồ nhà máy), gom theo khâu
+  const stageSelect = (curId, attrs = {}) => h('select', attrs, h('option', { value: '' }, '— Chưa gắn công đoạn —'),
+    st.phases().map(ph => { const ss = st.stages().filter(x => (x.phase || PHASES[0]) === ph); return ss.length ? h('optgroup', { label: ph }, ss.map(x => h('option', { value: x.id, selected: x.id === curId }, x.name + (x.line && x.line !== 'chung' ? ` (${LINES[x.line] || x.line})` : '')))) : null; }));
+  async function setStage(m, stageId) {
+    const ns = stageNodes(m.id);
+    try {
+      if (!stageId) {
+        if (ns.length && !await confirmBox('Gỡ máy khỏi công đoạn?', `Gỡ “${m.name}” khỏi công đoạn “${st.nodes.find(x => x.id === ns[0].parent_id)?.name || ''}” trên Sơ đồ nhà máy? (Dữ liệu máy trong bảng thiết bị vẫn giữ nguyên.)`)) { render(); return; }
+        for (const n of ns) await db.remove('factory_nodes', n.id);
+      } else if (ns.length) await db.update('factory_nodes', ns[0].id, { parent_id: stageId, position: st.kids(stageId).length, updated_by: store.user.id });
+      else { const n = await db.insert('factory_nodes', { product_id: null, parent_id: stageId, kind: 'machine', name: m.name, machine_id: m.id, position: st.kids(stageId).length, updated_by: store.user.id }); if (!st.nodes.some(x => x.id === n.id)) st.nodes.push(n); }
+      if (stageId) logActivity(store.user, `gắn máy ${m.name} vào công đoạn`, st.nodes.find(x => x.id === stageId)?.name || '');
+    } catch (e) { toastErr(e); }
+    render();
+  }
   const stageOf = (mId) => { const n = st.nodes.find(x => x.kind === 'machine' && x.machine_id === mId); return n ? st.nodes.find(s => s.id === n.parent_id)?.name || '' : ''; };
 
   function render() {
@@ -251,7 +267,7 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
     const stageCol = { key: '_stage', label: 'Công đoạn', type: 'text' };
     if (!byCol) {
       const cs = [{ key: '_name', label: 'Máy', type: 'text' }, stageCol, ...cols];
-      const headCell = (c, i) => h('th', { style: { minWidth: (i === 0 ? 150 : c.type === 'number' ? 100 : 120) + 'px' } },
+      const headCell = (c, i) => h('th', { style: { minWidth: (i === 0 ? 150 : c.key === '_stage' && !readOnly ? 210 : c.type === 'number' ? 100 : 120) + 'px' } },
         h('div', { class: 'th' }, h('span', {}, c.label), i > 1 && !readOnly && !MACHINE_COLUMNS.some(x => x.key === c.key) ? h('button', { class: 'icon-btn', title: 'Xoá thông số', onclick: () => delParam(c) }, '✕') : null));
       const delCell = (m) => readOnly ? null : h('td', { style: { textAlign: 'center' } }, h('button', { class: 'icon-btn row-del', title: 'Xoá máy', onclick: () => del(m) }, '✕'));
       const thead = h('thead', {}, h('tr', {}, cs.map(headCell), readOnly ? null : h('th')));
@@ -272,7 +288,11 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
     return d;
   }
   function cell(m, c, extra) {
-    if (c.key === '_stage') return h('td', { class: 'calc lock' }, h('div', { class: 'cell small' }, stageOf(m.id) || '—'));
+    if (c.key === '_stage') {
+      const ns = stageNodes(m.id);
+      if (readOnly || ns.length > 1) return h('td', { class: 'calc lock', title: ns.length > 1 ? 'Máy nằm ở nhiều công đoạn – sửa trên “Sơ đồ nhà máy”' : null }, h('div', { class: 'cell small' }, ns.length > 1 ? ns.map(n => st.nodes.find(x => x.id === n.parent_id)?.name).filter(Boolean).join(', ') : stageOf(m.id) || '—'));
+      return h('td', {}, stageSelect(ns[0]?.parent_id || '', { class: 'cell small', title: 'Chọn công đoạn (đồng bộ với Sơ đồ nhà máy)', onchange: (e) => setStage(m, e.target.value) }));
+    }
     const v = c.key === '_name' ? m.name : m.cells?.[c.key];
     const td = h('td', { class: c.type === 'number' ? 'num' : '' });
     if (readOnly) { td.append(h('div', { class: 'cell' }, c.key === '_name' ? h('b', {}, v) : show(c, v), extra)); return td; }
@@ -295,9 +315,18 @@ export function mountMachineTable(el, { readOnly = false } = {}) {
     if (!box.contains(document.activeElement)) render();
   }
   async function addRow() {
-    const name = await prompt('Máy mới', 'Tên máy', '', 'VD: Máy dập nổi DN1');
-    if (!name) return;
-    try { const m = await db.insert('machines', { name, cells: { nguon: 'Giả định' }, position: st.machines.length, updated_by: store.user.id }); if (!st.machines.some(x => x.id === m.id)) st.machines.push(m); render(); logActivity(store.user, 'thêm máy vào bảng thiết bị', name); toast('Đã thêm máy', 'ok'); } catch (e) { toastErr(e); }
+    const nameIn = h('input', { class: 'input', placeholder: 'VD: Máy dập nổi DN1' });
+    const stageIn = stageSelect('', { class: 'select' });
+    const r = await modal('Máy mới', h('div', {}, h('label', { class: 'field' }, h('span', {}, 'Tên máy'), nameIn),
+      h('label', { class: 'field' }, h('span', {}, 'Công đoạn'), stageIn),
+      h('p', { class: 'small muted' }, 'Máy sẽ được gắn vào công đoạn này trên Sơ đồ nhà máy. Có thể để trống và chọn sau.')), [{ label: 'Huỷ', value: null }, { label: 'Thêm', value: 'ok', primary: true }]);
+    const name = nameIn.value.trim();
+    if (r !== 'ok' || !name) return;
+    try {
+      const m = await db.insert('machines', { name, cells: { nguon: 'Giả định' }, position: st.machines.length, updated_by: store.user.id }); if (!st.machines.some(x => x.id === m.id)) st.machines.push(m);
+      if (stageIn.value) { const n = await db.insert('factory_nodes', { product_id: null, parent_id: stageIn.value, kind: 'machine', name, machine_id: m.id, position: st.kids(stageIn.value).length, updated_by: store.user.id }); if (!st.nodes.some(x => x.id === n.id)) st.nodes.push(n); }
+      render(); logActivity(store.user, 'thêm máy vào bảng thiết bị', name); toast('Đã thêm máy', 'ok');
+    } catch (e) { toastErr(e); }
   }
   async function delParam(c) { if (await confirmBox('Xoá thông số?', `Xoá thông số “${c.label}” khỏi bảng thiết bị?`)) await saveMachineCols(machineCols().filter(x => x.key !== c.key)); }
   async function del(m) {

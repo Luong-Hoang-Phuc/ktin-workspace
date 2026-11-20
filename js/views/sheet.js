@@ -16,6 +16,23 @@ const TYPES = { text: 'Văn bản', number: 'Số', formula: 'Công thức (cả
 const keyOf = (label, cols) => { let k = label.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) || 'cot'; let i = 2; const base = k; while (cols.some(c => c.key === k)) k = base + i++; return k; };
 const sorted = (rows) => [...rows].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 const showsSum = (c) => (c.type === 'number' || c.formula) && c.sum !== false && c.fmt !== 'date';
+// Ô gộp (như Excel / Word): lưu ở dòng chứa ô trên-trái: cells._m = { [khoá cột]: { r: số dòng, c: số cột } }
+export function mergeMap(cols, rows) {
+  const anchors = new Map(), covered = new Map();
+  rows.forEach((r, ri) => {
+    for (const [k, sp] of Object.entries(r.cells?._m || {})) {
+      const ci = cols.findIndex(c => c.key === k); if (ci < 0) continue;
+      const rs = Math.min(sp?.r || 1, rows.length - ri), cs = Math.min(sp?.c || 1, cols.length - ci);
+      if (rs * cs < 2 || covered.has(`${ri}:${ci}`) || anchors.has(`${ri}:${ci}`)) continue;
+      let clash = false;
+      for (let i = ri; i < ri + rs; i++) for (let j = ci; j < ci + cs; j++) if ((i !== ri || j !== ci) && (covered.has(`${i}:${j}`) || anchors.has(`${i}:${j}`))) clash = true;
+      if (clash) continue;
+      anchors.set(`${ri}:${ci}`, { ri, ci, rs, cs, key: k });
+      for (let i = ri; i < ri + rs; i++) for (let j = ci; j < ci + cs; j++) if (i !== ri || j !== ci) covered.set(`${i}:${j}`, `${ri}:${ci}`);
+    }
+  });
+  return { anchors, covered };
+}
 const cellText = (c, v) => c.type === 'person' ? nameOf(v) : c.type === 'check' ? (v ? '✓' : '') : fmtValue(v, c);
 
 // =====================================================================
@@ -80,6 +97,7 @@ export function mountSheets(el, { folder, sub, go, fixed = [], templates = [], i
 // =====================================================================
 export function mountSheet(el, { table, tableId, compact = false, onDeleted, book }) {
   let cur = table || null, rows = [], comp = null, sel = null; // sel = { ri, key }
+  let rng = null, dragFrom = null;   // vùng chọn nhiều ô { r0, r1, c0, c1 } (kéo chuột hoặc Shift + nhấp)
   const offs = [];
   const tools = h('div', { class: 'toolbar sheet-tools' });
   const gridBox = h('div');
@@ -98,6 +116,9 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   function renderTools() {
     if (!cur) { fill(tools); return; }
     fill(tools,
+      h('span', { class: 'small muted' }, rng ? `Đang chọn ${rng.r1 - rng.r0 + 1} dòng × ${rng.c1 - rng.c0 + 1} cột` : 'Kéo chuột qua nhiều ô (hoặc Shift + nhấp) để chọn vùng'),
+      h('button', { class: 'btn btn-sm', disabled: !rng || (rng.r0 === rng.r1 && rng.c0 === rng.c1), title: 'Gộp các ô đang chọn thành một ô (như Merge trong Excel / Word)', onclick: mergeRange }, '⊞ Gộp ô'),
+      h('button', { class: 'btn btn-sm', disabled: !mergesHit().length, title: 'Tách ô đã gộp về như cũ', onclick: unmerge }, '⊟ Tách ô'),
       h('div', { class: 'grow' }),
       h('button', { class: 'btn btn-sm', onclick: () => addRow(rows.length) }, '＋ Dòng'),
       h('button', { class: 'btn btn-sm', onclick: () => addColumn(cols().length) }, '＋ Cột'),
@@ -137,6 +158,8 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     if (!cur) { fill(gridBox, h('div', { class: 'empty' }, 'Không tìm thấy bảng.')); return; }
     recompute();
     const cs = cols();
+    const M = mergeMap(cs, rows);
+    if (rng) rng = fitRange(rng);
     const table = h('table', { class: 'grid xl' },
       h('thead', {}, h('tr', {}, h('th', { class: 'idx corner' }, ''),
         cs.map((c, i) => h('th', { style: { minWidth: (c.width || (c.type === 'number' ? 110 : 130)) + 'px' }, class: c.formula ? 'fx' : '' },
@@ -145,7 +168,13 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
             h('button', { class: 'icon-btn', title: 'Tuỳ chọn cột', onclick: (e) => colMenu(i, e.currentTarget) }, '▾')))))),
       h('tbody', {}, rows.map((r, ri) => h('tr', { 'data-row': r.id, 'data-i': ri },
         h('td', { class: 'idx', title: 'Tuỳ chọn dòng', onclick: (e) => rowMenu(ri, e.currentTarget) }, ri + 1),
-        cs.map(c => cell(r, ri, c))))),
+        cs.map((c, ci) => {
+          if (M.covered.has(`${ri}:${ci}`)) return null;
+          const td = cell(r, ri, c); td.setAttribute('data-ci', ci);
+          const a = M.anchors.get(`${ri}:${ci}`);
+          if (a) { td.rowSpan = a.rs; td.colSpan = a.cs; td.classList.add('mg'); }
+          return td;
+        })))),
       cs.some(showsSum) ? h('tfoot', {}, h('tr', {}, h('td', { class: 'idx' }, 'Σ'), cs.map(c => {
         const t = showsSum(c) ? comp.total(c.key) : null;
         return h('td', { class: showsSum(c) ? 'num' : '', 'data-tot': showsSum(c) ? c.key : null }, h('div', { class: 'cell tot' }, t == null ? '' : fmtValue(t, c)));
@@ -155,6 +184,112 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
         h('button', { class: 'btn btn-sm', onclick: () => addRow(rows.length) }, '＋ Thêm dòng'),
 ));
     if (sel) setSel(sel.ri, sel.key);
+    paintRange();
+  }
+
+  // ---------- chọn vùng & gộp ô ----------
+  // nới vùng chọn cho trùm trọn các ô đã gộp nằm chạm vào nó
+  function fitRange(q) {
+    const M = mergeMap(cols(), rows);
+    let { r0, r1, c0, c1 } = q, grow = true;
+    r1 = Math.min(r1, rows.length - 1); c1 = Math.min(c1, cols().length - 1);
+    if (r0 > r1 || c0 > c1) return null;
+    while (grow) {
+      grow = false;
+      for (const a of M.anchors.values()) {
+        if (a.ri > r1 || a.ri + a.rs - 1 < r0 || a.ci > c1 || a.ci + a.cs - 1 < c0) continue;
+        const n = { r0: Math.min(r0, a.ri), r1: Math.max(r1, a.ri + a.rs - 1), c0: Math.min(c0, a.ci), c1: Math.max(c1, a.ci + a.cs - 1) };
+        if (n.r0 !== r0 || n.r1 !== r1 || n.c0 !== c0 || n.c1 !== c1) { ({ r0, r1, c0, c1 } = n); grow = true; }
+      }
+    }
+    return { ...q, r0, r1, c0, c1 };
+  }
+  function setRange(a, b) {
+    rng = fitRange({ r0: Math.min(a.ri, b.ri), r1: Math.max(a.ri, b.ri), c0: Math.min(a.ci, b.ci), c1: Math.max(a.ci, b.ci), ar: a.ri, ac: a.ci });
+    paintRange(); renderTools();
+  }
+  function clearRange() { if (!rng) return; rng = null; paintRange(); renderTools(); }
+  function paintRange() {
+    gridBox.querySelectorAll('td.rsel').forEach(td => td.classList.remove('rsel'));
+    if (!rng) return;
+    gridBox.querySelectorAll('tbody td[data-ci]').forEach(td => {
+      const ri = +td.parentElement.getAttribute('data-i'), ci = +td.getAttribute('data-ci');
+      if (ri <= rng.r1 && ri + (td.rowSpan || 1) - 1 >= rng.r0 && ci <= rng.c1 && ci + (td.colSpan || 1) - 1 >= rng.c0) td.classList.add('rsel');
+    });
+  }
+  const posOf = (td) => ({ ri: +td.parentElement.getAttribute('data-i'), ci: +td.getAttribute('data-ci') });
+  gridBox.addEventListener('mousedown', (e) => {
+    const td = e.target.closest?.('tbody td[data-ci]'); if (!td || e.button) return;
+    const p = posOf(td);
+    if (e.shiftKey && (rng || sel)) {
+      e.preventDefault();
+      setRange(rng ? { ri: rng.ar, ci: rng.ac } : { ri: sel.ri, ci: cols().findIndex(c => c.key === sel.key) }, p);
+      return;
+    }
+    dragFrom = p; clearRange();
+  });
+  gridBox.addEventListener('mouseover', (e) => {
+    if (!dragFrom) return;
+    if (!(e.buttons & 1)) { dragFrom = null; gridBox.classList.remove('ranging'); return; }
+    const td = e.target.closest?.('tbody td[data-ci]'); if (!td) return;
+    const p = posOf(td);
+    if (!rng && p.ri === dragFrom.ri && p.ci === dragFrom.ci) return;
+    if (!gridBox.classList.contains('ranging')) { gridBox.classList.add('ranging'); if (gridBox.contains(document.activeElement)) document.activeElement.blur(); }
+    getSelection()?.removeAllRanges();
+    setRange(dragFrom, p);
+  });
+  const endDrag = () => { dragFrom = null; gridBox.classList.remove('ranging'); };
+  document.addEventListener('mouseup', endDrag);
+  gridBox.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearRange(); });
+  const hasVal = (v) => v !== '' && v != null && v !== false;
+  const saveRow = (r, cells) => { r.cells = cells; return db.update('data_rows', r.id, { cells, updated_by: store.user.id, updated_at: new Date().toISOString() }); };
+  async function mergeRange() {
+    if (!rng) return;
+    const cs = cols(), { r0, r1, c0, c1 } = rng;
+    if (r0 === r1 && c0 === c1) return;
+    let lost = 0;
+    for (let i = r0; i <= r1; i++) for (let j = c0; j <= c1; j++) if ((i !== r0 || j !== c0) && !cs[j].formula && hasVal(rows[i]?.cells?.[cs[j].key])) lost++;
+    if (lost && !await confirmBox('Gộp ô?', `Ô gộp chỉ giữ dữ liệu của ô trên cùng bên trái (${colLetter(c0)}${r0 + 1}). ${lost} ô khác trong vùng đang có dữ liệu sẽ bị xoá. Vẫn gộp?`)) return;
+    const jobs = [];
+    for (let i = r0; i <= r1; i++) {
+      const r = rows[i]; if (!r) continue;
+      const cells = { ...(r.cells || {}) }; let ch = false;
+      if (cells._m) { const m = { ...cells._m }; for (const k of Object.keys(m)) { const ci = cs.findIndex(c => c.key === k); if (ci >= c0 && ci <= c1) { delete m[k]; ch = true; } } cells._m = m; }
+      for (let j = c0; j <= c1; j++) if ((i !== r0 || j !== c0) && !cs[j].formula && cs[j].key in cells) { delete cells[cs[j].key]; ch = true; }
+      if (i === r0) { cells._m = { ...(cells._m || {}), [cs[c0].key]: { r: r1 - r0 + 1, c: c1 - c0 + 1 } }; ch = true; }
+      if (cells._m && !Object.keys(cells._m).length) delete cells._m;
+      if (ch) jobs.push(saveRow(r, cells));
+    }
+    rng = null; renderGrid(); renderTools();
+    try { await Promise.all(jobs); logActivity(store.user, 'gộp ô trong bảng', cur.name); } catch (e) { toastErr(e); }
+  }
+  function mergesHit() {
+    if (!cur) return [];
+    const M = mergeMap(cols(), rows);
+    const q = rng || (sel ? { r0: sel.ri, r1: sel.ri, c0: cols().findIndex(c => c.key === sel.key), c1: cols().findIndex(c => c.key === sel.key) } : null);
+    if (!q) return [];
+    return [...M.anchors.values()].filter(a => a.ri <= q.r1 && a.ri + a.rs - 1 >= q.r0 && a.ci <= q.c1 && a.ci + a.cs - 1 >= q.c0);
+  }
+  async function unmerge() {
+    const hit = mergesHit(); if (!hit.length) return;
+    const jobs = [];
+    for (const a of hit) { const r = rows[a.ri]; const m = { ...(r.cells?._m || {}) }; delete m[a.key]; const cells = { ...r.cells, _m: m }; if (!Object.keys(m).length) delete cells._m; jobs.push(saveRow(r, cells)); }
+    renderGrid(); renderTools();
+    await Promise.all(jobs).catch(toastErr);
+  }
+  // Chèn / xoá dòng hoặc cột nằm giữa vùng gộp → vùng gộp tự giãn / co theo (như Excel)
+  function adjustMerges(kind, at, delta) {
+    const cs = cols(), jobs = [];
+    const M = mergeMap(cs, rows);
+    for (const a of M.anchors.values()) {
+      const start = kind === 'row' ? a.ri : a.ci, len = kind === 'row' ? a.rs : a.cs;
+      const inside = at > start && at <= start + len - 1;
+      if (!inside) continue;
+      const r = rows[a.ri]; const m = { ...(r.cells?._m || {}) };
+      m[a.key] = { r: a.rs + (kind === 'row' ? delta : 0), c: a.cs + (kind === 'col' ? delta : 0) };
+      jobs.push(saveRow(r, { ...r.cells, _m: m }));
+    }
+    return Promise.all(jobs).catch(toastErr);
   }
 
   function cell(r, ri, c0) {
@@ -252,6 +387,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
       const before = rows[index - 1], after = rows[index];
       const pos = !rows.length ? 0 : !after ? (before.position ?? 0) + 1 : !before ? (after.position ?? 0) - 1 : ((before.position ?? 0) + (after.position ?? 0)) / 2;
       if (after) await shiftAll(index + 1, 1);
+      if (after) await adjustMerges('row', index, 1);
       const r = await db.insert('data_rows', { table_id: cur.id, cells, position: pos, updated_by: store.user.id });
       if (!rows.some(x => x.id === r.id)) { rows.push(r); rows = sorted(rows); }
       renderGrid(); renderTools();
@@ -261,6 +397,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   async function delRow(ri) {
     const r = rows[ri]; if (!r) return;
     if (Object.values(r.cells || {}).some(v => v !== '' && v != null && v !== false) && !await confirmBox('Xoá dòng?', `Dòng ${ri + 1} có dữ liệu. Xoá luôn? Công thức đang trỏ tới dòng này sẽ báo #REF!.`)) return;
+    await adjustMerges('row', ri, -1);
     rows = rows.filter(x => x.id !== r.id);
     await shiftAll(ri + 1, -1, r.id);
     renderGrid(); renderTools();
@@ -270,7 +407,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     popMenu(anchor, [
       { icon: '⤒', label: 'Chèn dòng phía trên', run: () => addRow(ri) },
       { icon: '⤓', label: 'Chèn dòng phía dưới', run: () => addRow(ri + 1) },
-      { icon: '⧉', label: 'Nhân bản dòng', run: () => addRow(ri + 1, { ...(rows[ri].cells || {}) }) },
+      { icon: '⧉', label: 'Nhân bản dòng', run: () => { const cells = { ...(rows[ri].cells || {}) }; delete cells._m; addRow(ri + 1, cells); } },
       '-', { icon: '🗑️', label: 'Xoá dòng', danger: true, run: () => delRow(ri) },
     ]);
   }
@@ -279,6 +416,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
     const r = await colDialog({ label: '', type: 'text', options: [] }, at);
     if (!r) return;
     const cs = [...cols()]; cs.splice(at, 0, { key: keyOf(r.label, cs), ...r });
+    if (at < cols().length) await adjustMerges('col', at, 1);
     saveColumns(cs);
   }
   async function colDialog(c, at) {
@@ -316,10 +454,11 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
       { icon: '↕️', label: 'Hẹp hơn', run: () => { cs[i] = { ...cs[i], width: Math.max(70, (cs[i].width || 130) - 40) }; saveColumns(cs); } },
       { icon: '🔤', label: 'Sắp xếp theo cột này', run: () => sortBy(cs[i]) },
       '-',
-      { icon: '🗑️', label: 'Xoá cột', danger: true, run: async () => { if (await confirmBox('Xoá cột?', `Xoá cột “${cs[i].label}”? Công thức đang dùng cột này sẽ báo #REF!.`)) { cs.splice(i, 1); saveColumns(cs); } } },
+      { icon: '🗑️', label: 'Xoá cột', danger: true, run: async () => { if (await confirmBox('Xoá cột?', `Xoá cột “${cs[i].label}”? Công thức đang dùng cột này sẽ báo #REF!.`)) { await adjustMerges('col', i, -1); cs.splice(i, 1); saveColumns(cs); } } },
     ]);
   }
   async function sortBy(c) {
+    if (mergeMap(cols(), rows).anchors.size) { toast('Bảng có ô gộp – hãy “⊟ Tách ô” trước khi sắp xếp.', 'error'); return; }
     if (rows.some(r => Object.values(r.cells || {}).some(v => isFormula(v) && /\{[a-z0-9_]+\}\d/.test(v))) && !await confirmBox('Sắp xếp bảng có công thức?', 'Bảng có công thức trỏ tới số dòng cố định – sắp xếp có thể làm sai kết quả. Vẫn sắp xếp?', false)) return;
     const val = (r, i) => { const v = comp.get(rows.indexOf(r), c.key); const n = parseNum(v); return n ?? String(v ?? ''); };
     const order = rows.map((r, i) => [r, val(r, i)]).sort((a, b) => typeof a[1] === 'number' && typeof b[1] === 'number' ? a[1] - b[1] : String(a[1]).localeCompare(String(b[1]), 'vi')).map(x => x[0]);
@@ -409,7 +548,7 @@ export function mountSheet(el, { table, tableId, compact = false, onDeleted, boo
   }
   load().catch(toastErr);
   offs.push(on('profiles', () => cur && !document.activeElement?.isContentEditable && renderGrid()));
-  return () => { offs.forEach(f => f()); room.close(); book?.subs.delete(onBook); };
+  return () => { offs.forEach(f => f()); room.close(); book?.subs.delete(onBook); document.removeEventListener('mouseup', endDrag); };
 }
 
 function parseCsv(t) {
@@ -433,11 +572,17 @@ export function renderStatic(table, rows, { hide = [], highlight, book } = {}) {
   const s = book ? book.sheet(table.id) : computeSheet(table.columns, rs);
   const cs = table.columns.filter(c => !hide.includes(c.key));
   const any = cs.some(showsSum) && rs.length > 1;
+  const M = mergeMap(table.columns, rs);
   return h('div', { class: 'sv-scroll' }, h('table', { class: 'sv' },
     h('thead', {}, h('tr', {}, h('th', { class: 'idx' }, '#'), cs.map((c, ci) => h('th', { class: c.type === 'number' || c.formula ? 'num' : '', style: c.type === 'text' ? { minWidth: Math.round((c.width || 120) * 0.7) + 'px' } : null }, c.label || colLetter(table.columns.indexOf(c)))))),
     h('tbody', {}, rs.map((r, ri) => h('tr', { class: highlight?.(r, ri, s) ? 'hl' : '' }, h('td', { class: 'idx' }, ri + 1), cs.map(c => {
+      const ci = table.columns.indexOf(c);
+      if (M.covered.has(`${ri}:${ci}`)) return null;
       const v = s.get(ri, c.key); c = r.cells?._f?.[c.key] ? { ...c, fmt: r.cells._f[c.key] } : c;
-      return h('td', { class: `${c.type === 'number' || c.formula || typeof v === 'number' ? 'num' : ''} ${v instanceof FErr ? 'err' : ''}` }, cellText(c, v));
+      const td = h('td', { class: `${c.type === 'number' || c.formula || typeof v === 'number' ? 'num' : ''} ${v instanceof FErr ? 'err' : ''}` }, cellText(c, v));
+      const a = M.anchors.get(`${ri}:${ci}`);
+      if (a) { td.rowSpan = a.rs; td.colSpan = table.columns.slice(a.ci, a.ci + a.cs).filter(x => cs.includes(x)).length || 1; td.classList.add('mg'); }
+      return td;
     })))),
     any ? h('tfoot', {}, h('tr', {}, h('td', { class: 'idx' }, 'Σ'), cs.map(c => { const t = showsSum(c) ? s.total(c.key) : null; return h('td', { class: 'num' }, t == null ? '' : fmtValue(t, c)); }))) : null));
 }

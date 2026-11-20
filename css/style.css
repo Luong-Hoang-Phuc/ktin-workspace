@@ -434,6 +434,11 @@ table.grid td.calc { background: #f8efdc; }
 table.grid td.calc .cell { color: #1f3d5c; }
 table.grid td.err .cell { color: var(--rd); font-weight: 700; }
 table.grid td.sel { box-shadow: inset 0 0 0 2px var(--gr); }
+table.grid td.rsel { background: rgba(37, 99, 235, .10) !important; box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .45); }
+table.grid td.mg { vertical-align: middle; background: #fffdf7; }
+table.grid td.mg .cell { text-align: center; }
+.ranging, .ranging * { user-select: none !important; cursor: cell; }
+table.sv td.mg { vertical-align: middle; text-align: center; border: 1px solid var(--line); }
 table.grid td.busy { box-shadow: inset 0 0 0 2px #f59e0b; }
 table.grid .cell.tot { font-weight: 700; color: var(--ink-2); }
 table.grid tfoot td { background: #efe2c8; border-top: 1.5px solid var(--line); position: sticky; bottom: 0; }
