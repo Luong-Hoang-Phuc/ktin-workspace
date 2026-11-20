@@ -730,3 +730,14 @@ table.grid th.fx { background: #dccbab; }
 .rb-txt { flex: 1; min-width: 0; display: grid; font-size: 12.5px; }
 .rb-txt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .reply-bar .rb-x { position: static; flex: none; }
+
+/* ---------- Bảng trắng: thanh định dạng chữ ---------- */
+.wb-fmt { display: flex; gap: 4px; align-items: center; padding: 6px 12px; background: #fffaf0; border-bottom: 1px solid var(--line); flex-wrap: wrap; min-height: 44px; }
+.wb-fmt.off { opacity: .8; }
+.fmt-lb { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-right: 2px; }
+.fmt-font { width: 165px; padding: 4px 8px !important; height: 30px; font-size: 13px; }
+.fmt-size { width: 56px; padding: 4px 6px !important; height: 30px; text-align: center; font-size: 13px; }
+.wb-tool.fmt-b, .wb-tool.fmt-i { min-width: 30px; height: 30px; padding: 0 7px; display: inline-grid; place-items: center; font-size: 13px; }
+.wb-tool.fmt-i svg { display: block; }
+.swatch.sm { width: 18px; height: 18px; }
+.fmt-color { width: 30px; height: 26px; padding: 0; border: 1.5px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }

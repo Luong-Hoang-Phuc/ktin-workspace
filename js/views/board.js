@@ -10,6 +10,16 @@ const TOOLS = [
   ['rect', '▭ Khung', 'R'], ['ellipse', '◯ Elip', 'O'], ['arrow', '➜ Mũi tên', 'A'], ['path', '✏️ Bút', 'P'],
 ];
 const BOX = new Set(['sticky', 'text', 'rect', 'ellipse']);
+const FONTS = [
+  ['Montserrat', "'Montserrat', sans-serif"], ['Roboto', "'Roboto', sans-serif"], ['Arial', 'Arial, Helvetica, sans-serif'],
+  ['Bitter (có chân)', "'Bitter', serif"], ['Lora (có chân)', "'Lora', serif"], ['Times New Roman', "'Times New Roman', Times, serif"],
+  ['Patrick Hand (viết tay)', "'Patrick Hand', cursive"], ['Dancing Script (bay bướm)', "'Dancing Script', cursive"], ['Anonymous Pro (đơn cách)', "'Anonymous Pro', monospace"],
+];
+const fontCss = (name) => (FONTS.find(f => f[0] === name) || FONTS[0])[1];
+const TEXT_COLORS = ['#1f2937', '#ffffff', '#64748b', '#dc2626', '#ea580c', '#ca8a04', '#059669', '#2563eb', '#7c3aed', '#db2777'];
+// Kiểu chữ mặc định theo loại hình
+const defStyle = (kind) => ({ size: kind === 'text' ? 20 : 15, align: kind === 'rect' || kind === 'ellipse' ? 'center' : 'left', valign: kind === 'rect' || kind === 'ellipse' ? 'middle' : 'top' });
+const styleOf = (it) => ({ font: 'Montserrat', bold: false, italic: false, underline: false, ...defStyle(it.kind), ...Object.fromEntries(Object.entries(it.data).filter(([k]) => ['font', 'size', 'bold', 'italic', 'underline', 'align', 'valign', 'tcolor'].includes(k))) });
 
 export function mountBoards(el, { folder, sub, go }) {
   let boards = [], board = null, items = new Map(), sel = null;
@@ -20,13 +30,14 @@ export function mountBoards(el, { folder, sub, go }) {
   el.append(root);
   const pick = h('div', { class: 'wb-pick' });
   const bar = h('div', { class: 'wb-bar' });
+  const fmt = h('div', { class: 'wb-fmt' });
   const canvas = h('div', { class: 'wb-canvas tool-select', tabindex: 0 });
   const svg = S('svg');
   const world = S('g');
   svg.append(world); canvas.append(svg);
   const zoomBox = h('div', { class: 'wb-zoom' });
   canvas.append(zoomBox);
-  root.append(pick, bar, canvas);
+  root.append(pick, bar, fmt, canvas);
   let room = null; const cursors = new Map();
 
   // ---------- danh sách bảng ----------
@@ -63,7 +74,42 @@ export function mountBoards(el, { folder, sub, go }) {
       h('button', { class: 'wb-tool', disabled: !sel, title: 'Nhân bản (Ctrl+D)', onclick: dup }, '⧉'),
       h('div', { class: 'grow' }),
       h('span', { class: 'small muted' }, 'Kéo nền để di chuyển · Cuộn chuột để phóng to · Nhấp đúp để sửa chữ'));
+    renderFmt();
     fill(zoomBox, h('button', { class: 'icon-btn', onclick: () => zoomAt(1 / 1.2) }, '－'), h('span', { class: 'small', style: { padding: '4px 6px', minWidth: '44px', textAlign: 'center' } }, Math.round(view.z * 100) + '%'), h('button', { class: 'icon-btn', onclick: () => zoomAt(1.2) }, '＋'), h('button', { class: 'icon-btn', title: 'Vừa khung', onclick: fit }, '⤢'));
+  }
+  // ---------- thanh định dạng chữ ----------
+  function renderFmt() {
+    const it = sel ? items.get(sel) : null;
+    const on = !!(it && BOX.has(it.kind));
+    fmt.classList.toggle('off', !on);
+    if (!on) { fill(fmt, h('span', { class: 'small muted' }, 'Chọn một ghi chú, chữ, khung hoặc elip để chỉnh kiểu chữ.')); return; }
+    const st = styleOf(it);
+    const set = (p) => patch(it.id, p, true).then(() => renderFmt());
+    const tog = (k, label, title, css) => h('button', { class: `wb-tool fmt-b ${st[k] ? 'on' : ''}`, title, style: css, onclick: () => set({ [k]: !st[k] }) }, label);
+    const al = (k, v, icon, title) => h('button', { class: `wb-tool fmt-i ${st[k] === v ? 'on' : ''}`, title, onclick: () => set({ [k]: v }), html: icon });
+    const fontSel = h('select', { class: 'input fmt-font', title: 'Phông chữ', onchange: () => set({ font: fontSel.value }) },
+      FONTS.map(([n, css]) => h('option', { value: n, selected: n === st.font, style: { fontFamily: css } }, n)));
+    const sizeIn = h('input', { class: 'input fmt-size', type: 'number', min: 8, max: 120, value: st.size, title: 'Cỡ chữ', onchange: () => { const v = Math.min(120, Math.max(8, Math.round(+sizeIn.value || st.size))); set({ size: v }); } });
+    const colIn = h('input', { type: 'color', class: 'fmt-color', title: 'Màu khác…', value: /^#[0-9a-f]{6}$/i.test(st.tcolor || '') ? st.tcolor : '#1f2937', onchange: () => set({ tcolor: colIn.value }) });
+    const L = (a, b, c) => `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M${a} 3h${b}M2 6.5h12M${c} 10h${16 - 2 * c}M2 13.5h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+    const V = (y) => `<svg viewBox="0 0 16 16" width="16" height="16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 ${y}h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+    fill(fmt,
+      h('span', { class: 'fmt-lb' }, 'Chữ'),
+      fontSel,
+      h('button', { class: 'wb-tool fmt-i', title: 'Nhỏ hơn', onclick: () => set({ size: Math.max(8, st.size - 2) }) }, 'A−'),
+      sizeIn,
+      h('button', { class: 'wb-tool fmt-i', title: 'Lớn hơn', onclick: () => set({ size: Math.min(120, st.size + 2) }) }, 'A+'),
+      h('span', { class: 'wb-sep' }),
+      tog('bold', 'B', 'Đậm', { fontWeight: 800 }), tog('italic', 'I', 'Nghiêng', { fontStyle: 'italic', fontFamily: 'Georgia, serif' }), tog('underline', 'U', 'Gạch chân', { textDecoration: 'underline' }),
+      h('span', { class: 'wb-sep' }),
+      al('align', 'left', L(2, 9, 2), 'Căn trái'), al('align', 'center', L(4.5, 7, 4), 'Căn giữa'), al('align', 'right', L(7, 7, 6), 'Căn phải'),
+      h('span', { class: 'wb-sep' }),
+      al('valign', 'top', V(4.5), 'Căn trên'), al('valign', 'middle', V(8), 'Căn giữa theo chiều dọc'), al('valign', 'bottom', V(11.5), 'Căn dưới'),
+      h('span', { class: 'wb-sep' }),
+      h('span', { class: 'fmt-lb' }, 'Màu chữ'),
+      h('button', { class: `wb-tool fmt-i ${!st.tcolor ? 'on' : ''}`, title: 'Tự động (theo nền)', onclick: () => set({ tcolor: null }) }, 'Tự động'),
+      TEXT_COLORS.map(c => h('span', { class: `swatch sm ${st.tcolor === c ? 'on' : ''}`, style: { background: c }, title: c, onclick: () => set({ tcolor: c }) })),
+      colIn);
   }
   function setTool(t) { tool = t; canvas.className = `wb-canvas tool-${t === 'select' ? 'select' : t === 'pan' ? 'pan' : 'draw'}`; renderBar(); }
 
@@ -74,16 +120,16 @@ export function mountBoards(el, { folder, sub, go }) {
     const stroke = d.color || '#1f2937';
     if (it.kind === 'sticky') {
       g.append(S('rect', { x: d.x + 3, y: d.y + 4, width: d.w, height: d.h, rx: 4, fill: 'rgba(0,0,0,.08)' }), S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, rx: 4, fill: d.color || COLORS[0] }));
-      g.append(textBox(d, isDark(d.color) ? '#fff' : '#1f2937', 15));
+      g.append(textBox(it, isDark(d.color) ? '#fff' : '#1f2937'));
     } else if (it.kind === 'text') {
       g.append(S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, fill: 'transparent' }));
-      g.append(textBox(d, COLORS.indexOf(d.color) < 6 ? '#1f2937' : d.color, d.size || 20));
+      g.append(textBox(it, COLORS.indexOf(d.color) < 6 ? '#1f2937' : d.color));
     } else if (it.kind === 'rect') {
       g.append(S('rect', { x: d.x, y: d.y, width: d.w, height: d.h, rx: 6, fill: COLORS.indexOf(d.color) < 6 ? d.color : 'rgba(255,255,255,.6)', stroke: COLORS.indexOf(d.color) < 6 ? '#64748b' : stroke, 'stroke-width': 2 }));
-      if (d.text) g.append(textBox(d, '#1f2937', 15, true));
+      if (d.text) g.append(textBox(it, '#1f2937'));
     } else if (it.kind === 'ellipse') {
       g.append(S('ellipse', { cx: d.x + d.w / 2, cy: d.y + d.h / 2, rx: Math.abs(d.w / 2), ry: Math.abs(d.h / 2), fill: COLORS.indexOf(d.color) < 6 ? d.color : 'rgba(255,255,255,.6)', stroke: COLORS.indexOf(d.color) < 6 ? '#64748b' : stroke, 'stroke-width': 2 }));
-      if (d.text) g.append(textBox(d, '#1f2937', 15, true));
+      if (d.text) g.append(textBox(it, '#1f2937'));
     } else if (it.kind === 'arrow') {
       const c = COLORS.indexOf(d.color) < 6 ? '#334155' : stroke;
       const ang = Math.atan2(d.y2 - d.y1, d.x2 - d.x1), L = 14;
@@ -104,12 +150,16 @@ export function mountBoards(el, { folder, sub, go }) {
     }
     return g;
   }
-  function textBox(d, col, size, center = false) {
-    const fo = S('foreignObject', { x: d.x, y: d.y, width: Math.max(10, d.w), height: Math.max(10, d.h) });
+  function textBox(it, autoCol) {
+    const d = it.data, st = styleOf(it);
+    const fo = S('foreignObject', { x: Math.min(d.x, d.x + d.w), y: Math.min(d.y, d.y + d.h), width: Math.max(10, Math.abs(d.w)), height: Math.max(10, Math.abs(d.h)) });
     const div = document.createElement('div');
-    div.style.cssText = `width:100%;height:100%;padding:10px 12px;box-sizing:border-box;font:500 ${size}px 'Montserrat',sans-serif;color:${col};white-space:pre-wrap;word-break:break-word;overflow:hidden;line-height:1.35;${center ? 'display:flex;align-items:center;justify-content:center;text-align:center;' : ''}`;
-    div.innerHTML = esc(d.text || '');
-    fo.append(div); return fo;
+    const jc = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[st.valign] || 'flex-start';
+    div.style.cssText = `width:100%;height:100%;padding:10px 12px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:${jc};overflow:hidden;`;
+    const inner = document.createElement('div');
+    inner.style.cssText = `font-family:${fontCss(st.font)};font-size:${st.size}px;font-weight:${st.bold ? 700 : 500};font-style:${st.italic ? 'italic' : 'normal'};text-decoration:${st.underline ? 'underline' : 'none'};color:${st.tcolor || autoCol};text-align:${st.align};white-space:pre-wrap;word-break:break-word;line-height:1.35;`;
+    inner.innerHTML = esc(d.text || '');
+    div.append(inner); fo.append(div); return fo;
   }
   const isDark = (c) => ['#1f2937', '#dc2626', '#2563eb', '#059669'].includes(c);
   function bbox(it) {
@@ -234,7 +284,9 @@ export function mountBoards(el, { folder, sub, go }) {
     const d = it.data, r = canvas.getBoundingClientRect();
     const ta = h('textarea', { class: 'wb-text-edit' });
     ta.value = d.text || '';
-    Object.assign(ta.style, { left: view.x + d.x * view.z + 'px', top: view.y + d.y * view.z + 'px', width: Math.max(120, d.w * view.z) + 'px', height: Math.max(50, d.h * view.z) + 'px', fontSize: (it.kind === 'text' ? (d.size || 20) : 15) * view.z + 'px', background: it.kind === 'sticky' ? d.color : '#fff' });
+    const st = styleOf(it);
+    Object.assign(ta.style, { left: view.x + d.x * view.z + 'px', top: view.y + d.y * view.z + 'px', width: Math.max(120, d.w * view.z) + 'px', height: Math.max(50, d.h * view.z) + 'px', fontSize: st.size * view.z + 'px', background: it.kind === 'sticky' ? d.color : '#fff',
+      fontFamily: fontCss(st.font), fontWeight: st.bold ? 700 : 500, fontStyle: st.italic ? 'italic' : 'normal', textDecoration: st.underline ? 'underline' : 'none', textAlign: st.align, color: st.tcolor || (it.kind === 'sticky' && isDark(d.color) ? '#fff' : '#1f2937') });
     canvas.append(ta); ta.focus(); ta.select();
     const t0 = Date.now();
     const done = () => { if (!ta.isConnected) return; if (Date.now() - t0 < 400) { setTimeout(() => ta.focus(), 0); return; } const v = ta.value; ta.remove(); if (v !== (d.text || '')) patch(it.id, { ...d, text: v }); else if (!v && it.kind === 'text') removeItem(it.id); canvas.focus(); };
