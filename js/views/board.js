@@ -123,7 +123,7 @@ export function mountBoards(el, { folder, sub, go }) {
   // ---------- vẽ ----------
   const applyView = () => { world.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.z})`); renderBar(); placeCursors(); };
   function drawItem(it) {
-    const d = it.data, g = S('g', { class: 'wb-item', 'data-id': it.id });
+    let d = it.data; const g = S('g', { class: 'wb-item', 'data-id': it.id });
     const stroke = d.color || '#1f2937';
     if (it.kind === 'group') {
       const col = d.color || COLORS[0];
@@ -148,6 +148,7 @@ export function mountBoards(el, { folder, sub, go }) {
       if (d.text) g.append(textBox(it, '#1f2937'));
     } else if (it.kind === 'arrow') {
       const c = COLORS.indexOf(d.color) < 6 ? '#334155' : stroke;
+      const d0 = d; d = { ...d0, ...arrowPts(d0) };
       const ang = Math.atan2(d.y2 - d.y1, d.x2 - d.x1), L = 14;
       g.append(S('line', { x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, stroke: 'transparent', 'stroke-width': 14 }));
       g.append(S('line', { x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, stroke: c, 'stroke-width': 2.5, 'stroke-linecap': 'round' }));
@@ -165,7 +166,7 @@ export function mountBoards(el, { folder, sub, go }) {
     if (sel === it.id && selSet.size === 1) {
       const b = bbox(it);
       if (RECT.has(it.kind)) g.append(S('rect', { class: 'wb-handle', 'data-handle': 'se', x: b.x + b.w - 5 / view.z, y: b.y + b.h - 5 / view.z, width: 10 / view.z, height: 10 / view.z }));
-      if (it.kind === 'arrow') { g.append(S('circle', { class: 'wb-handle', 'data-handle': 'p1', cx: d.x1, cy: d.y1, r: 6 / view.z }), S('circle', { class: 'wb-handle', 'data-handle': 'p2', cx: d.x2, cy: d.y2, r: 6 / view.z })); }
+      if (it.kind === 'arrow') { g.append(S('circle', { class: `wb-handle ${it.data.from ? 'anchored' : ''}`, 'data-handle': 'p1', cx: d.x1, cy: d.y1, r: 6 / view.z }), S('circle', { class: `wb-handle ${it.data.to ? 'anchored' : ''}`, 'data-handle': 'p2', cx: d.x2, cy: d.y2, r: 6 / view.z })); }
     }
     return g;
   }
@@ -184,11 +185,40 @@ export function mountBoards(el, { folder, sub, go }) {
   function bbox(it) {
     const d = it.data;
     if (RECT.has(it.kind)) return { x: Math.min(d.x, d.x + d.w), y: Math.min(d.y, d.y + d.h), w: Math.abs(d.w), h: Math.abs(d.h) };
-    if (it.kind === 'arrow') return { x: Math.min(d.x1, d.x2), y: Math.min(d.y1, d.y2), w: Math.abs(d.x2 - d.x1), h: Math.abs(d.y2 - d.y1) };
+    if (it.kind === 'arrow') { const q = (d.from || d.to) ? arrowPts(d) : d; return { x: Math.min(q.x1, q.x2), y: Math.min(q.y1, q.y2), w: Math.abs(q.x2 - q.x1), h: Math.abs(q.y2 - q.y1) }; }
     const xs = (d.points || []).map(p => p[0] + (d.dx || 0)), ys = (d.points || []).map(p => p[1] + (d.dy || 0));
     if (!xs.length) return { x: 0, y: 0, w: 0, h: 0 };
     return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
   }
+  // ---------- mũi tên neo vào ghi chú/khung ----------
+  // data.from / data.to = id của mục được neo; đầu mũi tên tự bám theo mép mục khi mục di chuyển
+  const anchorOf = (id) => { const t = id && items.get(id); return t && RECT.has(t.kind) ? t : null; };
+  const centerOf = (t) => { const b = bbox(t); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
+  function edgePoint(t, toward, gap = 6) {
+    const b = bbox(t), c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    const vx = toward.x - c.x, vy = toward.y - c.y;
+    if (!vx && !vy) return c;
+    let k;
+    if (t.kind === 'ellipse') { const a = b.w / 2, bb = b.h / 2; k = 1 / Math.sqrt((vx * vx) / (a * a) + (vy * vy) / (bb * bb)); }
+    else k = Math.min(Math.abs(vx) > 1e-9 ? (b.w / 2) / Math.abs(vx) : Infinity, Math.abs(vy) > 1e-9 ? (b.h / 2) / Math.abs(vy) : Infinity);
+    const len = Math.hypot(vx, vy);
+    return { x: c.x + vx * k + (vx / len) * gap, y: c.y + vy * k + (vy / len) * gap };
+  }
+  function arrowPts(d) {
+    const A = anchorOf(d.from), B = anchorOf(d.to);
+    const ra = A ? centerOf(A) : { x: d.x1, y: d.y1 }, rb = B ? centerOf(B) : { x: d.x2, y: d.y2 };
+    const p1 = A ? edgePoint(A, rb) : ra, p2 = B ? edgePoint(B, ra) : rb;
+    return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+  }
+  // Mục (ghi chú, chữ, khung, elip, nhóm) nằm dưới điểm p – ưu tiên mục trên cùng, nhóm xét sau
+  function itemAt(p, exclude) {
+    const list = [...items.values()].filter(it => RECT.has(it.kind) && it.id !== exclude && it.id !== 'temp')
+      .sort((a, b) => ((a.kind === 'group') - (b.kind === 'group')) || ((b.z || 0) - (a.z || 0)));
+    return list.find(it => { const b = bbox(it); return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; }) || null;
+  }
+  // Ghi lại toạ độ hiện tại vào x1..y2 (để mũi tên vẫn đúng chỗ nếu mục được neo bị xoá)
+  const freezeArrow = (d) => Object.assign(d, arrowPts(d));
+
   // Các mục nằm trong khung nhóm (tâm của mục nằm trong khung) – kéo nhóm thì chúng đi theo
   function contents(grp) {
     const G = bbox(grp);
@@ -196,12 +226,13 @@ export function mountBoards(el, { folder, sub, go }) {
     return [...items.values()].filter(it => {
       if (it.id === grp.id || it.id === 'temp' || (it.kind === 'group' && (it.z || 0) <= (grp.z || 0))) return false;
       // mũi tên chỉ thuộc nhóm khi cả hai đầu nằm trong khung (mũi tên nối ra ngoài thì giữ nguyên)
-      if (it.kind === 'arrow') return inG(it.data.x1, it.data.y1) && inG(it.data.x2, it.data.y2);
+      if (it.kind === 'arrow') { const q = arrowPts(it.data); return !(it.data.from && it.data.to) && inG(q.x1, q.y1) && inG(q.x2, q.y2); }
       const b = bbox(it); return inG(b.x + b.w / 2, b.y + b.h / 2);
     });
   }
   function redraw() {
     fill(world, ...[...items.values()].sort((a, b) => (a.z || 0) - (b.z || 0)).map(drawItem));
+    if (drag?.hover && items.get(drag.hover)) { const b = bbox(items.get(drag.hover)); world.append(S('rect', { x: b.x - 6, y: b.y - 6, width: b.w + 12, height: b.h + 12, rx: 8, fill: 'none', stroke: '#059669', 'stroke-width': 2.5 / view.z, 'pointer-events': 'none' })); }
     if (drag?.mode === 'marquee') { const m = drag.rect; world.append(S('rect', { x: m.x, y: m.y, width: m.w, height: m.h, fill: 'rgba(37,99,235,.08)', stroke: '#2563eb', 'stroke-width': 1 / view.z })); }
     if (!items.size && board) {
       const t = S('text', { x: 40, y: 60, fill: '#94a3b8', 'font-size': 16 }); t.textContent = 'Bảng trống – chọn 🟨 Ghi chú rồi nhấp vào bảng để bắt đầu.'; world.append(t);
@@ -259,7 +290,7 @@ export function mountBoards(el, { folder, sub, go }) {
     if (tool === 'sticky') { createItem('sticky', { ...base, x: p.x - 90, y: p.y - 70, w: 180, h: 140, text: '' }, true); setTool('select'); return; }
     if (tool === 'text') { createItem('text', { ...base, color: color, x: p.x, y: p.y - 20, w: 260, h: 60, text: '', size: 20 }, true); setTool('select'); return; }
     if (tool === 'rect' || tool === 'ellipse') drag = { mode: 'create', kind: tool, temp: { id: 'temp', kind: tool, z: 1e9, data: { ...base, x: p.x, y: p.y, w: 1, h: 1, text: '' } }, start: p };
-    if (tool === 'arrow') drag = { mode: 'create', kind: 'arrow', temp: { id: 'temp', kind: 'arrow', z: 1e9, data: { ...base, x1: p.x, y1: p.y, x2: p.x, y2: p.y } }, start: p };
+    if (tool === 'arrow') { const A = itemAt(p); drag = { mode: 'create', kind: 'arrow', temp: { id: 'temp', kind: 'arrow', z: 1e9, data: { ...base, x1: p.x, y1: p.y, x2: p.x, y2: p.y, from: A?.id || null, to: null } }, start: p }; }
     if (tool === 'path') drag = { mode: 'create', kind: 'path', temp: { id: 'temp', kind: 'path', z: 1e9, data: { ...base, points: [[Math.round(p.x), Math.round(p.y)]], width: 3 } }, start: p };
     if (drag?.temp) { items.set('temp', drag.temp); redraw(); }
   });
@@ -283,7 +314,7 @@ export function mountBoards(el, { folder, sub, go }) {
       for (const [id, o] of drag.origs) {
         const it = items.get(id); if (!it) continue;
         if (RECT.has(it.kind)) Object.assign(it.data, { x: o.x + dx, y: o.y + dy });
-        else if (it.kind === 'arrow') Object.assign(it.data, { x1: o.x1 + dx, y1: o.y1 + dy, x2: o.x2 + dx, y2: o.y2 + dy });
+        else if (it.kind === 'arrow') Object.assign(it.data, o.from ? {} : { x1: o.x1 + dx, y1: o.y1 + dy }, o.to ? {} : { x2: o.x2 + dx, y2: o.y2 + dy });
         else Object.assign(it.data, { dx: (o.dx || 0) + dx, dy: (o.dy || 0) + dy });
         list.push({ id, data: it.data });
       }
@@ -291,12 +322,17 @@ export function mountBoards(el, { folder, sub, go }) {
     } else if (drag.mode === 'resize') {
       const it = items.get(drag.id); const o = drag.orig;
       if (drag.handle === 'se') Object.assign(it.data, { w: Math.max(it.kind === 'group' ? 120 : 30, o.w + dx), h: Math.max(it.kind === 'group' ? GROUP_HEAD + 30 : 24, o.h + dy) });
-      if (drag.handle === 'p1') Object.assign(it.data, { x1: o.x1 + dx, y1: o.y1 + dy });
-      if (drag.handle === 'p2') Object.assign(it.data, { x2: o.x2 + dx, y2: o.y2 + dy });
+      if (drag.handle === 'p1' || drag.handle === 'p2') {
+        const one = drag.handle === 'p1', T = itemAt(p, one ? o.to : o.from);
+        const q = arrowPts(o);   // toạ độ thật lúc bắt đầu kéo
+        if (one) Object.assign(it.data, { x1: p.x, y1: p.y, from: T?.id || null }, o.to ? {} : { x2: q.x2, y2: q.y2 });
+        else Object.assign(it.data, { x2: p.x, y2: p.y, to: T?.id || null }, o.from ? {} : { x1: q.x1, y1: q.y1 });
+        drag.hover = T?.id || null;
+      }
       drag.moved = true; redraw(); sendMove(it.id, it.data);
     } else if (drag.mode === 'create') {
       const d = drag.temp.data;
-      if (drag.kind === 'arrow') Object.assign(d, { x2: p.x, y2: p.y });
+      if (drag.kind === 'arrow') { const B = itemAt(p, d.from); Object.assign(d, { x2: p.x, y2: p.y, to: B?.id || null }); drag.hover = B?.id || null; }
       else if (drag.kind === 'path') d.points.push([Math.round(p.x), Math.round(p.y)]);
       else Object.assign(d, { x: Math.min(drag.start.x, p.x), y: Math.min(drag.start.y, p.y), w: Math.abs(dx), h: Math.abs(dy) });
       redraw();
@@ -306,12 +342,14 @@ export function mountBoards(el, { folder, sub, go }) {
     const dr = drag; drag = null; canvas.style.cursor = '';
     if (!dr) return;
     if (dr.mode === 'marquee') { redraw(); renderBar(); return; }
-    if (dr.mode === 'move' && dr.moved) for (const id of dr.origs.keys()) { const it = items.get(id); if (it) patch(id, it.data); }
-    if (dr.mode === 'resize' && dr.moved) patch(dr.id, items.get(dr.id).data);
+    if (dr.mode === 'move' && dr.moved) for (const id of dr.origs.keys()) { const it = items.get(id); if (it) { if (it.kind === 'arrow') freezeArrow(it.data); patch(id, it.data); } }
+    if (dr.mode === 'resize' && dr.moved) { const it = items.get(dr.id); if (it.kind === 'arrow') freezeArrow(it.data); patch(dr.id, it.data); }
+    if (dr.hover) redraw();
     if (dr.mode === 'create') {
       items.delete('temp');
       const d = dr.temp.data;
-      const tooSmall = dr.kind === 'arrow' ? Math.hypot(d.x2 - d.x1, d.y2 - d.y1) < 8 : dr.kind === 'path' ? d.points.length < 2 : (d.w < 8 || d.h < 8);
+      if (dr.kind === 'arrow') { if (d.from && d.from === d.to) d.to = null; freezeArrow(d); }
+      const tooSmall = dr.kind === 'arrow' ? (Math.hypot(d.x2 - d.x1, d.y2 - d.y1) < 8 || (d.from && !d.to && Math.hypot(dr.start.x - d.x2, dr.start.y - d.y2) < 8)) : dr.kind === 'path' ? d.points.length < 2 : (d.w < 8 || d.h < 8);
       if (tooSmall && dr.kind !== 'rect' && dr.kind !== 'ellipse') { redraw(); return; }
       if (tooSmall) Object.assign(d, { w: 160, h: 100 });
       await createItem(dr.kind, d, false);
@@ -367,7 +405,10 @@ export function mountBoards(el, { folder, sub, go }) {
     try { await db.update('board_items', id, { data: it.data, updated_by: store.user.id, updated_at: new Date().toISOString() }); } catch (e) { toastErr(e); }
   }
   async function patchZ(id) { const z = Math.max(...[...items.values()].map(i => i.z || 0)) + 1; const it = items.get(id); it.z = z; redraw(); db.update('board_items', id, { z }).catch(toastErr); }
-  async function removeItem(id) { items.delete(id); selSet.delete(id); if (sel === id) sel = [...selSet].pop() || null; redraw(); renderBar(); try { await db.remove('board_items', id); } catch (e) { toastErr(e); } }
+  async function removeItem(id) {
+    // mũi tên đang neo vào mục bị xoá: giữ lại ở vị trí hiện tại và bỏ neo
+    for (const ar of items.values()) if (ar.kind === 'arrow' && (ar.data.from === id || ar.data.to === id) && !selSet.has(ar.id)) { const d = freezeArrow({ ...ar.data }); if (d.from === id) d.from = null; if (d.to === id) d.to = null; patch(ar.id, d); }
+    items.delete(id); selSet.delete(id); if (sel === id) sel = [...selSet].pop() || null; redraw(); renderBar(); try { await db.remove('board_items', id); } catch (e) { toastErr(e); } }
   async function delSel() {
     if (!selSet.size) return;
     const ids = new Set(selSet);
@@ -401,7 +442,7 @@ export function mountBoards(el, { folder, sub, go }) {
   async function dup() {
     const it = sel && items.get(sel); if (!it) return;
     const d = structuredClone(it.data);
-    if (RECT.has(it.kind)) { d.x += 24; d.y += 24; } else if (it.kind === 'arrow') { d.x1 += 24; d.x2 += 24; d.y1 += 24; d.y2 += 24; } else { d.dx = (d.dx || 0) + 24; d.dy = (d.dy || 0) + 24; }
+    if (RECT.has(it.kind)) { d.x += 24; d.y += 24; } else if (it.kind === 'arrow') { freezeArrow(d); d.from = d.to = null; d.x1 += 24; d.x2 += 24; d.y1 += 24; d.y2 += 24; } else { d.dx = (d.dx || 0) + 24; d.dy = (d.dy || 0) + 24; }
     createItem(it.kind, d, false);
   }
   function onRoom(m) {
@@ -418,6 +459,16 @@ export function mountBoards(el, { folder, sub, go }) {
   }
   const curTick = setInterval(placeCursors, 3000);
 
+  // Mũi tên cũ (vẽ trước khi có chức năng neo): đầu nào nằm sát mép một ghi chú/khung thì tự neo vào đó
+  function autoAnchor() {
+    const near = (x, y, ex) => { const P = 16; return [...items.values()].filter(t => BOX.has(t.kind) && t.id !== ex).sort((a, b) => (b.z || 0) - (a.z || 0)).find(t => { const b = bbox(t); return x >= b.x - P && x <= b.x + b.w + P && y >= b.y - P && y <= b.y + b.h + P; }); };
+    for (const it of items.values()) {
+      if (it.kind !== 'arrow' || 'from' in it.data || 'to' in it.data) continue;
+      const d = it.data, A = near(d.x1, d.y1), B = near(d.x2, d.y2, A?.id);
+      it.data = { ...d, from: A?.id || null, to: B?.id || null };
+      if (A || B) patch(it.id, it.data);
+    }
+  }
   let offItems = null;
   async function openBoard(id) {
     offItems?.(); room?.close(); items = new Map(); selectOnly(null); cursors.clear();
@@ -432,6 +483,7 @@ export function mountBoards(el, { folder, sub, go }) {
     room = db.room(`board-${board.id}`, onRoom);
     try {
       (await db.select('board_items', { eq: { board_id: board.id } })).forEach(it => items.set(it.id, it));
+      autoAnchor();
       redraw(); fit();
     } catch (e) { toastErr(e); }
     offItems = db.subscribe('board_items', ['board_id', board.id], (e) => {
