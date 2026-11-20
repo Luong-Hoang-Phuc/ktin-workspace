@@ -776,3 +776,10 @@ table.grid th.fx { background: #dccbab; }
 .rp-e { width: 38px; height: 38px; border: 0; background: none; border-radius: 10px; font-size: 22px; cursor: pointer; padding: 0; transition: transform .1s; }
 .rp-e:hover { background: rgba(198, 156, 109, .3); transform: scale(1.18); }
 .rp-more { font-size: 18px; font-weight: 700; color: var(--muted); }
+/* CSDL › Tiến độ đồ án */
+.pe-table td { vertical-align: middle; }
+.pe-table input.input { width: 100%; min-width: 120px; border: 0; background: transparent; padding: 6px 8px; font: inherit; }
+.pe-table input.pe-name { font-weight: 600; min-width: 200px; }
+.pe-table input.pe-desc { min-width: 200px; }
+.pe-table input.input:focus { background: #fff; outline: 2px solid var(--gr); }
+.pe-table .pe-acts { white-space: nowrap; }

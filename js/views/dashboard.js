@@ -6,6 +6,19 @@ import { productThumb } from './picker.js';
 import { watchSheets, readFigures } from './viewer.js';
 import { fmtNumber } from '../formula.js';
 
+// Bảng "Tiến độ đồ án" của một sản phẩm (tạo 8 bước mẫu nếu chưa có) – dùng chung cho Tổng quan và CSDL
+export async function ensureProgress(folder) {
+  const all = await db.select('data_tables', { eq: { folder_id: folder.id } });
+  let prog = all.find(t => t.name === PROGRESS_NAME) || null;
+  if (!prog) {
+    prog = await db.insert('data_tables', { name: PROGRESS_NAME, folder_id: folder.id, columns: PROGRESS_COLUMNS, created_by: store.user.id });
+    await db.insertMany('data_rows', STEPS.map(([a, b], i) => ({ table_id: prog.id, position: i, cells: { buoc: String(i + 1), noidung: a, ghichu: b, trangthai: 'Chưa làm', phutrach: '' }, updated_by: store.user.id })));
+  }
+  return prog;
+}
+// mục mà một bước liên kết tới: theo lựa chọn "Thuộc mục" (nếu đã đặt), không thì theo số bước như trước
+export const stepSection = (c) => 'muc' in (c || {}) ? SECTIONS.find(s => s.key === c.muc) || null : SECTIONS.find(s => s.n === Number(c?.buoc)) || null;
+
 // Tổng quan của một sản phẩm
 export function mountOverview(el, { product, folder }) {
   const offs = [];
@@ -32,12 +45,7 @@ export function mountOverview(el, { product, folder }) {
   // ---------- tiến độ (để trống cho nhóm tự cập nhật) ----------
   let prog = null, rows = [];
   async function loadProgress() {
-    const all = await db.select('data_tables', { eq: { folder_id: folder.id } });
-    prog = all.find(t => t.name === PROGRESS_NAME) || null;
-    if (!prog) {
-      prog = await db.insert('data_tables', { name: PROGRESS_NAME, folder_id: folder.id, columns: PROGRESS_COLUMNS, created_by: store.user.id });
-      await db.insertMany('data_rows', STEPS.map(([a, b], i) => ({ table_id: prog.id, position: i, cells: { buoc: String(i + 1), noidung: a, ghichu: b, trangthai: 'Chưa làm', phutrach: '' }, updated_by: store.user.id })));
-    }
+    prog = await ensureProgress(folder);
     rows = await db.select('data_rows', { eq: { table_id: prog.id }, order: ['position', true] });
     renderProgress();
   }
@@ -46,16 +54,16 @@ export function mountOverview(el, { product, folder }) {
     const pct = rows.length ? Math.round(done / rows.length * 100) : 0;
     const people = [...store.profiles.values()];
     fill(progBox,
-      h('div', { class: 'row', style: { marginBottom: '10px' } }, h('h3', { class: 'serif', style: { margin: 0 } }, 'Tiến độ đồ án'), h('div', { class: 'grow' }), h('span', { class: 'badge' }, `${done}/${rows.length} bước · ${pct}%`)),
+      h('div', { class: 'row', style: { marginBottom: '10px' } }, h('h3', { class: 'serif', style: { margin: 0 } }, 'Tiến độ đồ án'), h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm', href: `#/db/${product.id}/progress`, title: 'Thêm / bớt / sửa các bước trong Cơ sở dữ liệu', style: { marginRight: '8px' } }, '✏️ Sửa các bước'), h('span', { class: 'badge' }, `${done}/${rows.length} bước · ${pct}%`)),
       h('div', { class: 'bar big', style: { marginBottom: '12px' } }, h('i', { style: { width: pct + '%' } })),
-      h('div', { class: 'steps' }, rows.map(r => {
+      h('div', { class: 'steps' }, rows.map((r, ri) => {
         const c = r.cells || {};
-        const sec = SECTIONS.find(s => s.n === Number(c.buoc));
+        const sec = stepSection(c);
         const cls = c.trangthai === 'Xong' ? 'done' : (c.trangthai === 'Đang làm' || c.trangthai === 'Chờ duyệt') ? 'doing' : '';
         const set = (k, v) => db.update('data_rows', r.id, { cells: { ...r.cells, [k]: v }, updated_by: store.user.id, updated_at: new Date().toISOString() })
           .then(() => k === 'trangthai' && logActivity(store.user, `đổi trạng thái → ${v}`, `${product.name} · ${c.noidung}`)).catch(toastErr);
         return h('div', { class: `step ${cls}` },
-          h('div', { class: 'n' }, c.trangthai === 'Xong' ? '✓' : c.buoc),
+          h('div', { class: 'n' }, c.trangthai === 'Xong' ? '✓' : ri + 1),
           h('div', {}, sec ? h('a', { class: 'step-t', href: `#/p/${product.id}/${sec.key}` }, c.noidung) : h('div', { class: 'step-t' }, c.noidung), h('div', { class: 'small muted' }, c.ghichu || '')),
           h('select', { class: 'select sel-sm', onchange: (e) => set('phutrach', e.target.value) },
             h('option', { value: '' }, '— Phụ trách —'), people.map(pp => h('option', { value: pp.id, selected: c.phutrach === pp.id }, pp.display_name || pp.email))),

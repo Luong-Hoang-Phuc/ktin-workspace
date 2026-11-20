@@ -5,6 +5,8 @@ import { h, toast, toastErr, viError, prompt, confirmBox, modal, avatar, popMenu
 import { SECTIONS, WORK_SECTIONS, VIEW_TABS, SECTION_TEMPLATES } from './views/templates.js';
 import { mountPicker, productThumb } from './views/picker.js';
 import { mountOverview } from './views/dashboard.js';
+import { mountProgressEditor } from './views/progress.js';
+const PROGRESS_SEC = { key: 'progress', label: 'Tiến độ đồ án' };   // mục CSDL sửa các bước tiến độ
 import { mountFiles } from './views/files.js';
 import { mountNotes } from './views/notes.js';
 import { mountBoards } from './views/board.js';
@@ -190,7 +192,7 @@ function renderSide() {
   };
   let nav;
   if (r.view === 'pick' || !pid) nav = [h('div', { class: 'side-head' }, 'Chọn sản phẩm'), store.products.map(p => h('a', { class: 'nav', href: `#/p/${p.id}/overview` }, h('span', { class: 'ni' }, '▸'), h('span', { class: 'nl' }, p.name)))];
-  else if (r.view === 'db') nav = [h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu')), WORK_SECTIONS.map(s => item(s, 'db')),
+  else if (r.view === 'db') nav = [h('div', { class: 'db-head' }, h('b', {}, '🗄 Cơ sở dữ liệu')), item(PROGRESS_SEC, 'db'), WORK_SECTIONS.map(s => item(s, 'db')),
     h('a', { class: 'nav back', href: `#/p/${pid}/${r.section || 'overview'}` }, h('span', { class: 'ni' }, '←'), h('span', { class: 'nl' }, 'Về trang xem'))];
   else nav = [h('div', { class: 'side-head' }, 'Trang xem'), SECTIONS.map(s => item(s, 'view'))];
 
@@ -233,7 +235,7 @@ function openDrawer() {
       h('div', { class: 'dr-sec' }, 'Trang xem'),
       SECTIONS.map(sec => item(sec.n || '◎', sec.label, () => go(`#/p/${store.productId}/${sec.key}`), { on: store.route.view === 'product' && store.route.section === sec.key })),
       h('div', { class: 'dr-sec' }, 'Cơ sở dữ liệu (nhập liệu)'),
-      WORK_SECTIONS.map(sec => item(sec.n, sec.label, () => go(`#/db/${store.productId}/${sec.key}`), { on: store.route.view === 'db' && store.route.section === sec.key }))) : null,
+      [PROGRESS_SEC, ...WORK_SECTIONS].map(sec => item(sec.n || '◎', sec.label, () => go(`#/db/${store.productId}/${sec.key}`), { on: store.route.view === 'db' && store.route.section === sec.key }))) : null,
     h('div', { class: 'dr-sec' }, 'Dùng chung'),
     item('🗄', 'Cơ sở dữ liệu', () => go(dbHref())),
     item('📁', 'Tài liệu', () => go('#/docs/lecturer')),
@@ -323,9 +325,12 @@ function route() {
       store.route = { view: 'product', section: sec.key, tab: VIEW_TABS.some(([k]) => k === parts[3]) ? parts[3] : 'view', sub: parts[4] || null };
       renderProduct(sec);
     } else {
-      const sec = WORK_SECTIONS.find(s => s.key === parts[2]) || WORK_SECTIONS[0];
-      store.route = { view: 'db', section: sec.key, sub: parts[3] || null };
-      renderDb(sec);
+      if (parts[2] === PROGRESS_SEC.key) { store.route = { view: 'db', section: PROGRESS_SEC.key, sub: null }; renderDbProgress(); }
+      else {
+        const sec = WORK_SECTIONS.find(s => s.key === parts[2]) || WORK_SECTIONS[0];
+        store.route = { view: 'db', section: sec.key, sub: parts[3] || null };
+        renderDb(sec);
+      }
     }
   } else if (parts[0] === 'docs') {
     store.productId = fallbackPid();
@@ -400,6 +405,22 @@ async function renderDb(sec) {
     plan: [{ key: 'tree', label: '🌳 Phương án (dạng cây)', mount: (el) => mountPlan(el, { product: p }) }],
   }[sec.key] || [];
   cleanup = mountSheets(body, { folder, sub, go: goSub, fixed, templates: SECTION_TEMPLATES[sec.key] || [], title: `${secLabel(sec)} – ${sec.company ? 'Cong ty' : p.name}` });
+}
+
+// ---------- CSDL › Tiến độ đồ án: thêm / bớt / sửa các bước hiện ở trang Tổng quan ----------
+async function renderDbProgress() {
+  const p = productOf(store.productId);
+  setWhere({ productId: p.id, section: PROGRESS_SEC.key, sectionLabel: '🗄 Tiến độ đồ án', docs: false, mode: 'db' });
+  const overview = SECTIONS.find(s => s.key === 'overview');
+  const folder = await ensureFolder(p.id, overview).catch(toastErr);
+  if (!folder || store.route.section !== PROGRESS_SEC.key || store.route.view !== 'db') return;
+  const body = h('div', { class: 'tab-body' });
+  const head = h('div', { class: 'page-head db' },
+    h('div', { class: 'crumbs' }, h('span', {}, '🗄 Cơ sở dữ liệu'), h('span', {}, '›'), h('span', {}, p.name), h('span', {}, '›'), h('span', {}, 'Tiến độ đồ án')),
+    h('div', { class: 'page-title' }, h('span', { class: 'sec-n' }, '◎'), h('h1', { class: 'serif' }, 'Tiến độ đồ án'), h('span', { class: 'stamp small-stamp' }, 'NHẬP LIỆU'),
+      h('div', { class: 'grow' }), h('a', { class: 'btn btn-sm', href: `#/p/${p.id}/overview` }, '👁 Xem ở Tổng quan')));
+  fill(mainEl, h('div', { class: 'page-full' }, head, body));
+  cleanup = mountProgressEditor(body, { product: p, folder });
 }
 
 async function renderBoard() {
